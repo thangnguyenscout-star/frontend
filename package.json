@@ -9,11 +9,13 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "format": "prettier --write src",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "node server.cjs"
   },
   "dependencies": {
     "@apollo/client": "^3.13.0",
     "@primevue/themes": "^4.3.0",
+    "express": "^4.22.3",
     "graphql": "^16.10.0",
     "pinia": "^3.0.0",
     "primeflex": "^4.0.0",
