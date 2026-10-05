@@ -1,7 +1,12 @@
 {
   "navigationFallback": {
     "rewrite": "/index.html",
-    "exclude": ["/assets/*", "/images/*", "/*.{png,jpg,gif,ico,svg,css,js}"]
+    "exclude": ["/assets/*", "/images/*", "/*.{png,jpg,gif,ico,svg,css,js,ts}"]
+  },
+  "mimeTypes": {
+    ".ts": "application/javascript",
+    ".js": "application/javascript",
+    ".mjs": "application/javascript"
   },
   "responseOverrides": {
     "404": {
