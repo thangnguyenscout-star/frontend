@@ -1,0 +1,27 @@
+{
+  "AUTH_INVALID_CREDENTIALS": "Invalid username or password.",
+  "AUTH_USER_NOT_FOUND": "User account was not found.",
+  "AUTH_USER_LOCKED": "The user account is locked.",
+  "AUTH_USER_INACTIVE": "The user account is inactive.",
+  "AUTH_PASSWORD_EXPIRED": "Your password has expired.",
+  "AUTH_TOKEN_INVALID": "The login session is invalid.",
+  "AUTH_TOKEN_EXPIRED": "The login session has expired.",
+  "AUTH_REFRESH_TOKEN_INVALID": "The refresh token is invalid.",
+  "AUTH_REFRESH_TOKEN_EXPIRED": "The refresh token has expired.",
+  "login": {
+    "subtitle": "Five-star Human Resources & Operations Management",
+    "online": "System online",
+    "portal": "INTERNAL PORTAL · GRAND HOTEL HR",
+    "title": "Sign in to your account",
+    "description": "Enter your credentials to access the human resources system.",
+    "username": "USERNAME",
+    "password": "PASSWORD",
+    "usernamePlaceholder": "Enter your username",
+    "passwordPlaceholder": "Enter your password",
+    "hidePassword": "Hide password",
+    "showPassword": "Show password",
+    "submit": "Sign in",
+    "sessionHint": "Access permissions are determined by your account.",
+    "copyright": "All rights reserved."
+  }
+}

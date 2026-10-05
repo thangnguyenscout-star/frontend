@@ -1,0 +1,27 @@
+{
+  "AUTH_INVALID_CREDENTIALS": "Nom d'utilisateur ou mot de passe incorrect.",
+  "AUTH_USER_NOT_FOUND": "Compte utilisateur introuvable.",
+  "AUTH_USER_LOCKED": "Le compte utilisateur est verrouillé.",
+  "AUTH_USER_INACTIVE": "Le compte utilisateur est inactif.",
+  "AUTH_PASSWORD_EXPIRED": "Votre mot de passe a expiré.",
+  "AUTH_TOKEN_INVALID": "La session de connexion n'est pas valide.",
+  "AUTH_TOKEN_EXPIRED": "La session de connexion a expiré.",
+  "AUTH_REFRESH_TOKEN_INVALID": "Le refresh token n'est pas valide.",
+  "AUTH_REFRESH_TOKEN_EXPIRED": "Le refresh token a expiré.",
+  "login": {
+    "subtitle": "Gestion des ressources humaines et des opérations cinq étoiles",
+    "online": "Système en ligne",
+    "portal": "PORTAIL INTERNE · GRAND HOTEL HR",
+    "title": "Connexion à votre compte",
+    "description": "Saisissez vos identifiants pour accéder au système de ressources humaines.",
+    "username": "NOM D’UTILISATEUR",
+    "password": "MOT DE PASSE",
+    "usernamePlaceholder": "Saisissez votre nom d’utilisateur",
+    "passwordPlaceholder": "Saisissez votre mot de passe",
+    "hidePassword": "Masquer le mot de passe",
+    "showPassword": "Afficher le mot de passe",
+    "submit": "Se connecter",
+    "sessionHint": "Les droits d’accès sont définis par votre compte.",
+    "copyright": "Tous droits réservés."
+  }
+}

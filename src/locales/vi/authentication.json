@@ -1,0 +1,27 @@
+{
+  "AUTH_INVALID_CREDENTIALS": "Tên đăng nhập hoặc mật khẩu không chính xác.",
+  "AUTH_USER_NOT_FOUND": "Không tìm thấy tài khoản.",
+  "AUTH_USER_LOCKED": "Tài khoản đã bị khóa.",
+  "AUTH_USER_INACTIVE": "Tài khoản hiện không hoạt động.",
+  "AUTH_PASSWORD_EXPIRED": "Mật khẩu đã hết hạn.",
+  "AUTH_TOKEN_INVALID": "Phiên đăng nhập không hợp lệ.",
+  "AUTH_TOKEN_EXPIRED": "Phiên đăng nhập đã hết hạn.",
+  "AUTH_REFRESH_TOKEN_INVALID": "Refresh token không hợp lệ.",
+  "AUTH_REFRESH_TOKEN_EXPIRED": "Refresh token đã hết hạn.",
+  "login": {
+    "subtitle": "Hệ thống Quản trị Nhân sự & Vận hành 5 Sao",
+    "online": "Hệ thống trực tuyến",
+    "portal": "CỔNG NỘI BỘ · GRAND HOTEL HR",
+    "title": "Đăng nhập tài khoản",
+    "description": "Vui lòng nhập thông tin xác thực để truy cập hệ thống Quản trị Nhân sự.",
+    "username": "TÊN NGƯỜI DÙNG",
+    "password": "MẬT KHẨU TRUY CẬP",
+    "usernamePlaceholder": "Nhập tên tài khoản",
+    "passwordPlaceholder": "Nhập mật khẩu",
+    "hidePassword": "Ẩn mật khẩu",
+    "showPassword": "Hiện mật khẩu",
+    "submit": "Đăng nhập hệ thống",
+    "sessionHint": "Quyền truy cập được xác định theo tài khoản của bạn.",
+    "copyright": "Tất cả các quyền được bảo lưu."
+  }
+}

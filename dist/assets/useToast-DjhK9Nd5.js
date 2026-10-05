@@ -1,0 +1,1 @@
+import{aI as e,u as o}from"./index-BidP3q7B.js";function u(){const r=e(),{t}=o();return Object.fromEntries(["success","info","warning","error"].map(s=>[s,a=>r.add({severity:s==="warning"?"warn":s,summary:t(a),life:4e3})]))}export{u};

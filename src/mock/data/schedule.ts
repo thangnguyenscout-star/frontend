@@ -1,0 +1,48 @@
+﻿import type { Shift } from '@/types/schedule';
+// Demo configuration, replace with the backend shift catalog.
+export const scheduleCatalog: Shift[] = [
+  {
+    id: 'HC',
+    code: 'D',
+    name: 'Ca D · Hành chính',
+    scheduleType: 'ADMINISTRATIVE',
+    startTime: '08:00',
+    endTime: '17:00',
+    crossDay: false,
+    displayColor: '#2563eb',
+    active: true,
+  },
+  {
+    id: 'M',
+    code: 'M',
+    name: 'Ca sáng',
+    scheduleType: 'ROTATING',
+    startTime: '06:00',
+    endTime: '14:00',
+    crossDay: false,
+    displayColor: '#059669',
+    active: true,
+  },
+  {
+    id: 'E',
+    code: 'E',
+    name: 'Ca chiều',
+    scheduleType: 'ROTATING',
+    startTime: '14:00',
+    endTime: '22:00',
+    crossDay: false,
+    displayColor: '#d97706',
+    active: true,
+  },
+  {
+    id: 'N',
+    code: 'N',
+    name: 'Ca đêm',
+    scheduleType: 'ROTATING',
+    startTime: '22:00',
+    endTime: '06:00',
+    crossDay: true,
+    displayColor: '#7c3aed',
+    active: true,
+  },
+];
