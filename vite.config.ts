@@ -4,21 +4,27 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [vue()],
+
   base: '/',
+
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
+
   build: {
     outDir: 'dist',
+    emptyOutDir: true,
+    sourcemap: false,
+    minify: 'esbuild',
+
     rollupOptions: {
       output: {
-        // Ép toàn bộ file script đầu ra dùng đuôi .js
         entryFileNames: 'assets/[name]-[hash].js',
         chunkFileNames: 'assets/[name]-[hash].js',
         assetFileNames: 'assets/[name]-[hash].[ext]',
       },
-    },
-  },
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, './src'),
     },
   },
 });
