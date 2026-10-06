@@ -18,7 +18,7 @@ export const apolloClient = new ApolloClient({
   )
     .concat(authLink)
     .concat(
-      new HttpLink({ uri: import.meta.env.VITE_GRAPHQL_URL || '/graphql', credentials: 'include' }),
+      new HttpLink({ uri: import.meta.env.VITE_API_URL || '/graphql', credentials: 'include' }),
     ),
   cache: new InMemoryCache(),
 });

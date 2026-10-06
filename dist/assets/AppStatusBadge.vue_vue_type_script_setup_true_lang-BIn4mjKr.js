@@ -1,1 +1,0 @@
-import{d as s,c as t,n,b as o,e as l,t as r,o as c}from"./index-BidP3q7B.js";const i=s({__name:"AppStatusBadge",props:{label:{},severity:{default:"secondary"}},setup(e){return(p,a)=>(c(),t("span",{class:n(["status-badge",e.severity])},[a[0]||(a[0]=o("span",{class:"status-dot"},null,-1)),l(r(e.label),1)],2))}});export{i as _};
