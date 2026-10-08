@@ -25,6 +25,8 @@ export const EMPLOYEE_LIST = gql`
         trangThaiNhanVien
         tenNoiSinh
         tenNoiCap
+        maBoPhan
+        maChucVu
         tenBoPhan
         tenChucVu
       }

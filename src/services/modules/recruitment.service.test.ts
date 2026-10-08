@@ -88,6 +88,35 @@ describe('recruitment API integration', () => {
       isResults: true,
     });
   });
+  it('loads positions for the selected department and supports an unfiltered list', async () => {
+    query.mockResolvedValue({
+      data: {
+        danhSachChucVu: {
+          isResults: true,
+          data: [null, { maChucVu: 'DEV', maBoPhan: 'IT', tenChucVu: 'Developer' }],
+        },
+      },
+    });
+    await expect(recruitmentService.getPositions('IT')).resolves.toEqual([
+      { value: 'DEV', label: 'Developer' },
+    ]);
+    expect(query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ variables: { maBoPhan: 'IT' } }),
+    );
+    const document = print(query.mock.calls[0][0].query);
+    expect(document).toContain('danhSachChucVu(maBoPhan: $maBoPhan)');
+    expect(document).toContain('maBoPhan');
+    await recruitmentService.getPositions();
+    expect(query).toHaveBeenLastCalledWith(
+      expect.objectContaining({ variables: { maBoPhan: null } }),
+    );
+  });
+  it('propagates position catalog failures', async () => {
+    query.mockResolvedValue({
+      data: { danhSachChucVu: { isResults: false, message: 'Rejected', data: [] } },
+    });
+    await expect(recruitmentService.getPositions('IT')).rejects.toThrow('Rejected');
+  });
   it('loads departments from the list endpoint', async () => {
     query.mockResolvedValueOnce({
       data: { danhSachBoPhan: { isResults: true, data: [{ maBoPhan: 'IT', tenBoPhan: 'IT' }] } },
@@ -314,43 +343,84 @@ describe('recruitment identity fields', () => {
 
 describe('create employee from recruitment', () => {
   const source = {
-    tuyenDungId: 42, maNhanVien: '000042', ho: 'Nguyễn', tenDem: 'Văn', ten: 'An',
-    hoTen: 'Nguyễn Văn An', gioiTinh: 'M', email: 'an@example.com', soDienThoai: '0901234567',
-    soCCCD: '001234567890', ngayCap: '2024-02-29T00:00:00+07:00', noiCap: '03001',
-    maBoPhan: 'IT', maChucVu: 'DEV', ngayTiepNhan: '2026-09-01T00:00:00+07:00',
-    ngayBatDauLamViec: '2026-10-01T00:00:00+07:00', trangThai: '5',
+    tuyenDungId: 42,
+    maNhanVien: '000042',
+    ho: 'Nguyễn',
+    tenDem: 'Văn',
+    ten: 'An',
+    hoTen: 'Nguyễn Văn An',
+    gioiTinh: 'M',
+    email: 'an@example.com',
+    soDienThoai: '0901234567',
+    soCCCD: '001234567890',
+    ngayCap: '2024-02-29T00:00:00+07:00',
+    noiCap: '03001',
+    maBoPhan: 'IT',
+    maChucVu: 'DEV',
+    ngayTiepNhan: '2026-09-01T00:00:00+07:00',
+    ngayBatDauLamViec: '2026-10-01T00:00:00+07:00',
+    trangThai: '5',
   };
-  beforeEach(() => { query.mockReset(); mutate.mockReset(); });
+  beforeEach(() => {
+    query.mockReset();
+    mutate.mockReset();
+  });
   it('loads fresh source before mapping the employee creation payload', async () => {
     query.mockResolvedValue({ data: { tuyenDungForNhanVien: { isResults: true, data: source } } });
-    mutate.mockResolvedValue({ data: { taoNhanVienTuTuyenDung: { isResults: true, message: 'OK' } } });
-    await expect(recruitmentService.createEmployeeFromRecruitment('42')).resolves.toMatchObject({ isResults: true });
-    expect(query).toHaveBeenCalledWith(expect.objectContaining({ variables: { id: 42 }, fetchPolicy: 'no-cache' }));
+    mutate.mockResolvedValue({
+      data: { taoNhanVienTuTuyenDung: { isResults: true, message: 'OK' } },
+    });
+    await expect(recruitmentService.createEmployeeFromRecruitment('42')).resolves.toMatchObject({
+      isResults: true,
+    });
+    expect(query).toHaveBeenCalledWith(
+      expect.objectContaining({ variables: { id: 42 }, fetchPolicy: 'no-cache' }),
+    );
     expect(query.mock.invocationCallOrder[0]).toBeLessThan(mutate.mock.invocationCallOrder[0]);
     expect(mutate.mock.calls[0][0].variables.input).toEqual({
       tuyenDungId: 42,
       thongTinNhanVien: {
-        maNhanVien: '000042', ho: 'Nguyễn', tenDem: 'Văn', ten: 'An', gioiTinh: 'M',
-        ngaySinh: null, noiSinh: null, email: source.email, soDienThoai: source.soDienThoai,
-        cccd: '001234567890', ngayCap: source.ngayCap, noiCap: '03001',
+        maNhanVien: '000042',
+        ho: 'Nguyễn',
+        tenDem: 'Văn',
+        ten: 'An',
+        gioiTinh: 'M',
+        ngaySinh: null,
+        noiSinh: null,
+        email: source.email,
+        soDienThoai: source.soDienThoai,
+        cccd: '001234567890',
+        ngayCap: source.ngayCap,
+        noiCap: '03001',
         ngayTuyenDung: source.ngayBatDauLamViec,
       },
     });
   });
   it('does not create an employee when loading source fails', async () => {
-    query.mockResolvedValue({ data: { tuyenDungForNhanVien: { isResults: false, message: 'TUYENDUNG_NOT_READY' } } });
-    await expect(recruitmentService.createEmployeeFromRecruitment('42')).rejects.toThrow('TUYENDUNG_NOT_READY');
+    query.mockResolvedValue({
+      data: { tuyenDungForNhanVien: { isResults: false, message: 'TUYENDUNG_NOT_READY' } },
+    });
+    await expect(recruitmentService.createEmployeeFromRecruitment('42')).rejects.toThrow(
+      'TUYENDUNG_NOT_READY',
+    );
     expect(mutate).not.toHaveBeenCalled();
   });
-  it.each([{ ...source, tuyenDungId: 43 }, { ...source, maNhanVien: null }])('rejects invalid source before mutation', async (data) => {
+  it.each([
+    { ...source, tuyenDungId: 43 },
+    { ...source, maNhanVien: null },
+  ])('rejects invalid source before mutation', async (data) => {
     query.mockResolvedValue({ data: { tuyenDungForNhanVien: { isResults: true, data } } });
     await expect(recruitmentService.createEmployeeFromRecruitment('42')).rejects.toThrow();
     expect(mutate).not.toHaveBeenCalled();
   });
   it('propagates employee creation failure without completing onboarding', async () => {
     query.mockResolvedValue({ data: { tuyenDungForNhanVien: { isResults: true, data: source } } });
-    mutate.mockResolvedValue({ data: { taoNhanVienTuTuyenDung: { isResults: false, message: 'EMPLOYEE_CREATE_FAILED' } } });
-    await expect(recruitmentService.createEmployeeFromRecruitment('42')).rejects.toThrow('EMPLOYEE_CREATE_FAILED');
+    mutate.mockResolvedValue({
+      data: { taoNhanVienTuTuyenDung: { isResults: false, message: 'EMPLOYEE_CREATE_FAILED' } },
+    });
+    await expect(recruitmentService.createEmployeeFromRecruitment('42')).rejects.toThrow(
+      'EMPLOYEE_CREATE_FAILED',
+    );
     expect(mutate).toHaveBeenCalledTimes(1);
   });
 });

@@ -91,10 +91,10 @@ export const contractService = {
       throw new ContractApiError(result.message || 'Không thể tải danh mục phụ cấp.');
     return result.data || [];
   },
-  async getCatalogs() {
+  async getCatalogs(maBoPhan: string | null = null) {
     const [types, organization] = await Promise.all([
       employeeService.masterCodes('07'),
-      recruitmentService.getCatalogs(),
+      recruitmentService.getCatalogs(maBoPhan),
     ]);
     return {
       types: types.map((item) => ({ value: item.maKey, label: item.tenGiaTri })),

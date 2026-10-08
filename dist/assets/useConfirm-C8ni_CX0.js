@@ -1,0 +1,1 @@
+import{aJ as n,u as i}from"./index-BM5aPeaC.js";function t(){const r=n(),{t:e}=i();return(a,c={})=>r.require({header:e("confirm"),message:c.message??e("confirmMessage"),icon:"pi pi-exclamation-triangle",acceptLabel:c.acceptLabel??e("confirm"),rejectLabel:e("cancel"),accept:a,reject:c.reject})}export{t as u};

@@ -27,6 +27,7 @@ const props = defineProps<{
   busy?: boolean;
   serverErrors?: Record<string, string>;
   readonly?: boolean;
+  showStatus?: boolean;
   activeTab?: number;
   canAdjustContract?: boolean;
   canViewContract: boolean;
@@ -286,6 +287,7 @@ const allowanceTotal = computed(() => allowances.value.reduce((sum, item) => sum
         </div>
       </div>
       <AppStatusBadge
+        v-if="showStatus !== false"
         :label="
           record.status === 'draft'
             ? 'Hồ sơ mới'

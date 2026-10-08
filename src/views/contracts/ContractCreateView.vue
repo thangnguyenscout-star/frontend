@@ -166,31 +166,17 @@ onBeforeRouteLeave(() => {
 });
 </script>
 <template>
-  <section>
-    <div
-      v-if="!readonly"
-      class="page-heading"
-    >
+  <section class="contract-page">
+    <div v-if="!readonly" class="page-heading">
       <div>
-        <RouterLink to="/contracts">
-          Hợp đồng lao động
-        </RouterLink>
+        <RouterLink to="/contracts"> Hợp đồng lao động </RouterLink>
         <h1>Tạo hợp đồng lao động</h1>
       </div>
     </div>
-    <p
-      v-if="!allowed"
-      role="alert"
-    >
-      Bạn không có quyền thực hiện thao tác này.
-    </p>
+    <p v-if="!allowed" role="alert">Bạn không có quyền thực hiện thao tác này.</p>
     <template v-else>
       <AppLoading v-if="loadingDetail" />
-      <AppErrorState
-        v-else-if="readonly && error"
-        :error="error"
-        @retry="load"
-      />
+      <AppErrorState v-else-if="readonly && error" :error="error" @retry="load" />
       <template v-else-if="readonly && detail">
         <div class="summary-card">
           <h2>{{ detail.soHopDongLaoDong }}</h2>
@@ -203,19 +189,13 @@ onBeforeRouteLeave(() => {
         <section class="profile-panel">
           <h2>Thông tin hợp đồng</h2>
           <dl class="read-fields">
-            <div
-              v-for="[label, value] in readFields"
-              :key="label"
-            >
+            <div v-for="[label, value] in readFields" :key="label">
               <dt>{{ label }}</dt>
               <dd>{{ value || '—' }}</dd>
             </div>
           </dl>
         </section>
-        <ContractAllowanceTable
-          :model-value="detail.phuCaps || []"
-          readonly
-        />
+        <ContractAllowanceTable :model-value="detail.phuCaps || []" readonly />
         <div class="contract-actions">
           <AppButton
             label="Xem và in tờ trình ký hợp đồng"
@@ -248,17 +228,10 @@ onBeforeRouteLeave(() => {
         />
       </template>
       <template v-else-if="!readonly">
-        <p
-          v-if="error"
-          role="alert"
-          class="field-error"
-        >
+        <p v-if="error" role="alert" class="field-error">
           {{ error }}
         </p>
-        <RouterLink
-          v-if="createdId"
-          :to="'/contracts/' + encodeURIComponent(createdId)"
-        >
+        <RouterLink v-if="createdId" :to="'/contracts/' + encodeURIComponent(createdId)">
           Xem hợp đồng vừa tạo
         </RouterLink>
         <ContractForm
@@ -272,6 +245,24 @@ onBeforeRouteLeave(() => {
   </section>
 </template>
 <style scoped>
+.contract-page {
+  max-width: 1200px;
+  min-width: 0;
+  margin: 0 auto;
+}
+.page-heading {
+  margin-bottom: 24px;
+}
+.page-heading a {
+  color: #0067c0;
+  font-size: 12px;
+}
+.page-heading h1 {
+  margin: 10px 0 0;
+  font-size: 26px;
+  font-weight: 600;
+}
+
 .contract-actions {
   display: flex;
   flex-wrap: wrap;

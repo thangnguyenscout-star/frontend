@@ -139,24 +139,27 @@ export const recruitmentService = {
       .filter((item) => item !== null)
       .map((item) => ({ value: item.maKey, label: item.tenGiaTri }));
   },
-  async getCatalogs(): Promise<RecruitmentCatalogs> {
+  async getPositions(maBoPhan: string | null = null): Promise<RecruitmentCatalogs['positions']> {
+    const positions = await query<
+      ({ maChucVu: string; maBoPhan: string; tenChucVu: string } | null)[]
+    >(RECRUITMENT_POSITIONS, 'danhSachChucVu', { maBoPhan: maBoPhan || null });
+    return positions
+      .filter((item) => item !== null)
+      .map((item) => ({ value: item.maChucVu, label: item.tenChucVu }));
+  },
+  async getCatalogs(maBoPhan: string | null = null): Promise<RecruitmentCatalogs> {
     const [departments, positions] = await Promise.all([
       query<({ maBoPhan: string; tenBoPhan: string } | null)[]>(
         RECRUITMENT_DEPARTMENTS,
         'danhSachBoPhan',
       ),
-      query<({ maChucVu: string; tenChucVu: string } | null)[]>(
-        RECRUITMENT_POSITIONS,
-        'danhSachChucVu',
-      ),
+      recruitmentService.getPositions(maBoPhan),
     ]);
     return {
       departments: departments
         .filter((x) => x !== null)
         .map((x) => ({ value: x.maBoPhan, label: x.tenBoPhan })),
-      positions: positions
-        .filter((x) => x !== null)
-        .map((x) => ({ value: x.maChucVu, label: x.tenChucVu })),
+      positions,
     };
   },
   async list(keyword = '') {
@@ -193,15 +196,15 @@ export const recruitmentService = {
         ten: source.ten,
         gioiTinh: source.gioiTinh,
         ngaySinh: source.ngaySinh,
-        noiSinh: "03001",
+        noiSinh: '03001',
         email: source.email,
         soDienThoai: source.soDienThoai,
-        danToc: "01001",
-        tonGiao: "02000",
-        diaChiThuongTru: "-",
-        diaChiLienHe: "-",
-        trinhDoHocVan: "04004",
-        trinhDoChuyenMon: "05001",
+        danToc: '01001',
+        tonGiao: '02000',
+        diaChiThuongTru: '-',
+        diaChiLienHe: '-',
+        trinhDoHocVan: '04004',
+        trinhDoChuyenMon: '05001',
         cccd: source.soCCCD,
         ngayCap: source.ngayCap,
         noiCap: source.noiCap,

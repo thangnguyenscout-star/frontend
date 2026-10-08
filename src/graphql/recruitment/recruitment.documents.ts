@@ -30,12 +30,13 @@ export const RECRUITMENT_DEPARTMENTS = gql`
   }
 `;
 export const RECRUITMENT_POSITIONS = gql`
-  query DanhSachChucVu {
-    danhSachChucVu {
+  query DanhSachChucVu($maBoPhan: String) {
+    danhSachChucVu(maBoPhan: $maBoPhan) {
       isResults
       message
       data {
         maChucVu
+        maBoPhan
         tenChucVu
       }
     }
@@ -84,9 +85,26 @@ export const RECRUITMENT_FOR_EMPLOYEE = gql`
       isResults
       message
       data {
-        tuyenDungId maNhanVien ho tenDem ten hoTen gioiTinh soDienThoai email ngaySinh
-        soCCCD ngayCap noiCap maBoPhan tenBoPhan maChucVu tenChucVu
-        ngayTiepNhan ngayBatDauLamViec trangThai
+        tuyenDungId
+        maNhanVien
+        ho
+        tenDem
+        ten
+        hoTen
+        gioiTinh
+        soDienThoai
+        email
+        ngaySinh
+        soCCCD
+        ngayCap
+        noiCap
+        maBoPhan
+        tenBoPhan
+        maChucVu
+        tenChucVu
+        ngayTiepNhan
+        ngayBatDauLamViec
+        trangThai
       }
     }
   }

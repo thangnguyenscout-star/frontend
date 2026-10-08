@@ -1,4 +1,4 @@
-﻿export type ScheduleType = 'ADMINISTRATIVE' | 'ROTATING';
+export type ScheduleType = 'ADMINISTRATIVE' | 'ROTATING';
 export interface Shift {
   id: string;
   code: string;
@@ -19,6 +19,12 @@ export interface Assignment {
   status: 'SCHEDULED' | 'OFF' | 'LEAVE';
   note: string;
   revision: number;
+  shiftSymbol?: string;
+  shiftName?: string;
+  apiStatus?: string | number | null;
+  assignmentSource?: string | null;
+  startDate?: string;
+  endDate?: string;
   /** Legacy assignments default to a full shift. */
   fullTime?: boolean;
   startTime?: string;

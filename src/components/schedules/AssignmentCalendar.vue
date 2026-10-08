@@ -1,8 +1,8 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Dialog from 'primevue/dialog';
 import { systemToday, isPastScheduleDate } from '@/utils/schedule-date';
-import type { Shift } from '@/types/schedule';
+import type { Shift, Assignment } from '@/types/schedule';
 export interface DayPlan {
   employeeId: string;
   date: string;
@@ -16,6 +16,8 @@ export interface DayPlan {
 const props = defineProps<{
   employees: { code: string; name: string; department: string }[];
   shifts: Shift[];
+  existingAssignments?: Assignment[];
+  scheduledDates?: { employeeId: string; dates: string[] }[];
   shiftsLoading?: boolean;
   shiftsError?: string;
   modelValue: DayPlan[];
@@ -40,6 +42,12 @@ const visible = ref(false),
   note = ref(''),
   error = ref('');
 const startTime = ref('');
+watch(
+  () => props.disabled,
+  (value) => {
+    if (value) visible.value = false;
+  },
+);
 const selectedShift = computed(() => props.shifts.find((s) => s.id === shiftId.value));
 const flexibleShift = computed(
   () => !props.administrative && !!selectedShift.value?.code.endsWith('XX'),
@@ -106,8 +114,26 @@ function formatDate(value: string) {
 function plan(d: string, id = employeeId.value) {
   return props.modelValue.find((p) => p.date === d && p.employeeId === id);
 }
+function alreadyScheduled(d: string, id: string) {
+  if (props.fixedDate === d) return false;
+  return (
+    props.scheduledDates?.some((item) => item.employeeId === id && item.dates.includes(d)) ||
+    props.existingAssignments?.some((item) => item.employeeId === id && item.date === d)
+  );
+}
+function isAdministrativeSunday(d: string) {
+  return props.administrative && new Date(`${d}T12:00:00`).getDay() === 0;
+}
 function open(d: string, id: string) {
-  if (isPastScheduleDate(d)) return;
+  if (
+    props.disabled ||
+    props.shiftsLoading ||
+    props.shiftsError ||
+    isAdministrativeSunday(d) ||
+    isPastScheduleDate(d) ||
+    alreadyScheduled(d, id)
+  )
+    return;
   employeeId.value = id;
   const p = plan(d);
   date.value = d;
@@ -120,6 +146,7 @@ function open(d: string, id: string) {
   if (!props.administrative) emit('request-shifts');
 }
 function save() {
+  if (props.disabled) return;
   if (isPastScheduleDate(date.value)) {
     error.value = 'Không được phân công ngày trong quá khứ.';
     return;
@@ -172,10 +199,21 @@ function remove() {
   visible.value = false;
 }
 function text(d: string, id = employeeId.value) {
+  if (isAdministrativeSunday(d) && !plan(d, id)) return 'Không xếp';
   const p = plan(d, id);
+  if (!p) {
+    const assigned = props.existingAssignments?.find((a) => a.employeeId === id && a.date === d);
+    if (assigned)
+      return (
+        assigned.shiftSymbol ||
+        props.shifts.find((s) => s.id === assigned.shiftId)?.code ||
+        assigned.shiftId
+      );
+    if (alreadyScheduled(d, id)) return 'Đã xếp';
+  }
   return p?.shiftId === 'OFF'
     ? 'Nghỉ'
-    : props.shifts.find((s) => s.id === p?.shiftId)?.name || (p ? '⚠ Chọn lại ca' : '');
+    : props.shifts.find((s) => s.id === p?.shiftId)?.code || (p ? '⚠ Chọn lại ca' : '');
 }
 </script>
 <template>
@@ -271,8 +309,8 @@ function text(d: string, id = employeeId.value) {
             >
               <button
                 type="button"
-                :class="{ picked: !!plan(d, e.code) }"
-                :disabled="disabled || d < currentDate || (!!fixedDate && d !== fixedDate)"
+                :class="{ picked: !!plan(d, e.code), assigned: alreadyScheduled(d, e.code) }"
+                :disabled="disabled || d < currentDate || (!!fixedDate && d !== fixedDate) || isAdministrativeSunday(d) || alreadyScheduled(d, e.code)"
                 :aria-label="e.name + ' · ' + d + ' · ' + text(d, e.code)"
                 @click="open(d, e.code)"
               >
@@ -310,7 +348,8 @@ function text(d: string, id = employeeId.value) {
             >Ca làm việc *<select v-model="shiftId" :disabled="shiftsLoading || !!shiftsError">
               <option value="">Chọn ca</option>
               <option v-for="s in shifts" :key="s.id" :value="s.id">
-                {{ s.name }} · {{ s.startTime }}–{{ s.endTime }}{{ s.crossDay ? ' (+1 ngày)' : '' }}
+                {{ s.code }} · {{ s.name }} · {{ s.startTime }}–{{ s.endTime
+                }}{{ s.crossDay ? ' (+1 ngày)' : '' }}
               </option>
               <option value="OFF">Nghỉ</option>
             </select></label
@@ -360,16 +399,17 @@ function text(d: string, id = employeeId.value) {
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
-  font-size: 13px;
+  font-size: 12px;
 }
 .employee-calendar th,
 .employee-calendar td {
-  padding: 10px;
-  min-width: 130px;
+  padding: 6px 8px;
+  min-width: 92px;
   border-bottom: 1px solid #e2e8f0;
   border-right: 1px solid #eef2f6;
   background: white;
   text-align: left;
+  vertical-align: middle;
 }
 .employee-calendar thead th {
   position: sticky;
@@ -377,22 +417,26 @@ function text(d: string, id = employeeId.value) {
   z-index: 2;
   background: #f8fafc;
   text-align: center;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .employee-calendar .employee-column {
   position: sticky;
   left: 0;
-  min-width: 220px;
-  width: 220px;
-  max-width: 220px;
+  min-width: 180px;
+  width: 180px;
+  max-width: 180px;
   z-index: 1;
+  padding: 8px 10px;
 }
 .employee-calendar .department-column {
   position: sticky;
-  left: 220px;
-  min-width: 170px;
-  width: 170px;
-  max-width: 170px;
+  left: 180px;
+  min-width: 130px;
+  width: 130px;
+  max-width: 130px;
   z-index: 1;
+  padding: 8px 10px;
 }
 .employee-calendar thead .employee-column,
 .employee-calendar thead .department-column {
@@ -401,14 +445,21 @@ function text(d: string, id = employeeId.value) {
 }
 .employee-calendar small {
   display: block;
-  margin-top: 6px;
+  margin-top: 4px;
   color: #64748b;
   font-weight: 400;
+  font-size: 10px;
 }
 .employee-calendar td button {
   width: 100%;
-  min-height: 65px;
+  min-height: 52px;
+  padding: 6px 8px;
   text-align: left;
+}
+.employee-calendar td button strong,
+.employee-calendar th strong {
+  font-size: 11px;
+  line-height: 1.2;
 }
 .employee-calendar .weekend {
   background: #f8fafc;
@@ -426,20 +477,22 @@ function text(d: string, id = employeeId.value) {
   }
   .employee-calendar .department-column {
     position: static;
-    min-width: 130px;
+    min-width: 110px;
+    width: 110px;
+    max-width: 110px;
   }
   .employee-calendar th,
   .employee-calendar td {
-    padding: 8px;
+    padding: 5px 6px;
   }
 }
 .calendar-toolbar {
   display: flex;
   justify-content: space-between;
-  gap: 16px;
+  gap: 12px;
   align-items: center;
   flex-wrap: wrap;
-  margin: 20px 0;
+  margin: 14px 0;
 }
 .calendar-toolbar h3 {
   margin: 0;

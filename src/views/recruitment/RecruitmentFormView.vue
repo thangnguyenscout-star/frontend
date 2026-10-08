@@ -44,6 +44,32 @@ const invalidIssueDate = ref(false);
 const errors = ref<RecruitmentValidation>({});
 const loading = ref(true);
 const saving = ref(false);
+const loadingPositions = ref(false);
+const positionError = ref('');
+let positionSequence = 0;
+async function loadPositions() {
+  const sequence = ++positionSequence;
+  catalogs.value.positions = [];
+  positionError.value = '';
+  loadingPositions.value = true;
+  try {
+    const positions = await recruitmentService.getPositions(form.maBoPhanDuKien);
+    if (sequence === positionSequence) catalogs.value.positions = positions;
+  } catch (exception) {
+    if (sequence === positionSequence) positionError.value = getApiErrorMessage(exception);
+  } finally {
+    if (sequence === positionSequence) loadingPositions.value = false;
+  }
+}
+watch(
+  () => form.maBoPhanDuKien,
+  () => {
+    if (loading.value) return;
+    form.maChucVuDuKien = '';
+    void loadPositions();
+  },
+  { flush: 'sync' },
+);
 const error = ref('');
 const genderOptions = [
   { value: 'M', label: 'Nam' },
@@ -65,6 +91,9 @@ let loadSequence = 0;
 async function load() {
   const sequence = ++loadSequence;
   loading.value = true;
+  ++positionSequence;
+  positionError.value = '';
+  loadingPositions.value = false;
   loaded.value = false;
   detail.value = null;
   errors.value = {};
@@ -81,7 +110,6 @@ async function load() {
     catalogs.value = options;
     issuePlaces.value = places;
     detail.value = record;
-    loaded.value = true;
     if (record) {
       const {
         ngayTiepNhan,
@@ -120,6 +148,9 @@ async function load() {
         ngayBatDauLamViec,
       });
     }
+    await loadPositions();
+    if (sequence !== loadSequence) return;
+    loaded.value = true;
   } catch (exception) {
     if (sequence !== loadSequence) return;
     error.value = getApiErrorMessage(exception);
@@ -128,7 +159,15 @@ async function load() {
   }
 }
 async function save() {
-  if (readOnly.value || loading.value || !loaded.value || saving.value) return;
+  if (
+    readOnly.value ||
+    loading.value ||
+    loadingPositions.value ||
+    positionError.value ||
+    !loaded.value ||
+    saving.value
+  )
+    return;
   errors.value = validateRecruitment(form);
   if (invalidIssueDate.value)
     errors.value.ngayCap = 'Ngày cấp không hợp lệ. Vui lòng nhập đầy đủ ngày/tháng/năm.';
@@ -180,7 +219,7 @@ watch(() => route.fullPath, load, { immediate: true });
         />
         <AppButton
           v-if="!readOnly"
-          :disabled="loading || !loaded"
+          :disabled="loading || loadingPositions || !!positionError || !loaded"
           label="Lưu hồ sơ"
           icon="pi pi-check"
           :loading="saving"
@@ -190,6 +229,7 @@ watch(() => route.fullPath, load, { immediate: true });
     </header>
 
     <AppErrorState v-if="error" :error="error" @retry="load" />
+    <AppErrorState v-if="positionError" :error="positionError" @retry="loadPositions" />
     <AppLoading v-if="loading" />
 
     <form v-else-if="loaded" novalidate class="recruitment-form" @submit.prevent="save">
@@ -366,7 +406,10 @@ watch(() => route.fullPath, load, { immediate: true });
               ><span>Chức danh dự kiến <b>*</b></span
               ><Select
                 v-model="form.maChucVuDuKien"
-                :disabled="readOnly || saving"
+                :disabled="
+                  readOnly || saving || loadingPositions || !!positionError || !form.maBoPhanDuKien
+                "
+                :loading="loadingPositions"
                 :options="catalogs.positions"
                 option-label="label"
                 option-value="value"
@@ -376,7 +419,7 @@ watch(() => route.fullPath, load, { immediate: true });
                 empty-message="Chưa có chức danh"
                 empty-filter-message="Không tìm thấy chức danh"
                 placeholder="Chọn chức danh"
-              /><small>{{ errors.maChucVuDuKien }}</small></label
+              /><small>{{ positionError || errors.maChucVuDuKien }}</small></label
             >
             <label class="field"
               ><span>Ngày bắt đầu làm việc</span
@@ -498,24 +541,48 @@ watch(() => route.fullPath, load, { immediate: true });
   display: flex;
   min-width: 0;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 7px;
   color: var(--p-surface-700);
-  font-size: 0.875rem;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
 }
 .field :deep(.p-inputtext),
 .field :deep(.p-select),
 .field :deep(.p-inputnumber),
 .field :deep(.p-datepicker) {
   width: 100%;
+  min-width: 0;
+  font-size: 13px;
+}
+.field > span {
+  min-height: 20px;
+  line-height: 20px;
+}
+.field :deep(.p-inputtext),
+.field :deep(.p-select) {
+  height: 40px;
+}
+.field :deep(.p-select-label) {
+  padding-block: 9px;
+}
+.field :deep(.p-inputnumber-input) {
+  text-align: right;
+}
+.field :deep(.app-date-picker) {
+  width: 100%;
+  min-width: 0;
+}
+.field :deep(.p-datepicker-dropdown) {
+  width: 40px;
 }
 .field b {
   color: var(--p-red-500);
 }
 .field small {
-  min-height: 1rem;
   color: var(--p-red-500);
+  font-size: 12px;
   font-weight: 400;
+  line-height: 1.5;
 }
 .form-page-header {
   display: flex;
@@ -557,8 +624,8 @@ watch(() => route.fullPath, load, { immediate: true });
   flex: 0 0 auto;
 }
 .header-actions :deep(.p-button) {
-  height: 34px;
-  min-height: 34px;
+  height: 40px;
+  min-height: 40px;
   padding: 0 14px;
 }
 .recruitment-form {
@@ -567,6 +634,7 @@ watch(() => route.fullPath, load, { immediate: true });
 }
 .contract-master {
   margin: 0;
+  padding: 24px;
 }
 .contract-master h2 {
   margin: 0 0 18px;
@@ -576,21 +644,12 @@ watch(() => route.fullPath, load, { immediate: true });
 }
 .recruitment-grid {
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px 20px;
+  gap: 20px;
   width: 100%;
   align-items: start;
 }
 .recruitment-details .recruitment-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-.field {
-  gap: 6px !important;
-  font-size: 12px !important;
-  font-weight: 500 !important;
-}
-.field small {
-  min-height: 0 !important;
-  font-size: 11px;
 }
 .field small:empty {
   display: none;
@@ -604,7 +663,8 @@ watch(() => route.fullPath, load, { immediate: true });
   background: #fff;
 }
 .contract-form-actions :deep(.p-button) {
-  min-width: 90px;
+  min-width: 110px;
+  min-height: 40px;
 }
 @media (max-width: 1000px) {
   .header-actions {
@@ -617,6 +677,19 @@ watch(() => route.fullPath, load, { immediate: true });
   }
 }
 @media (max-width: 640px) {
+  .contract-master {
+    padding: 16px;
+  }
+  .recruitment-grid {
+    gap: 16px;
+  }
+  .header-actions {
+    flex-wrap: wrap;
+  }
+  .header-actions :deep(.p-button),
+  .contract-form-actions :deep(.p-button) {
+    flex: 1;
+  }
   .form-page-header {
     align-items: flex-start;
     flex-direction: column;

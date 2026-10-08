@@ -153,6 +153,7 @@ watch(() => route.fullPath, load, { immediate: true });
       :can-adjust-contract="false"
       :busy="busy"
       :readonly="mode === 'READ'"
+      :show-status="mode !== 'CREATE'"
       @save="save"
       @cancel="router.push('/employees')"
     />

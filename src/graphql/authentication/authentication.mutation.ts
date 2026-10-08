@@ -10,6 +10,8 @@ export const AUTHENTICATION_MUTATION = gql`
         roleId
         accessToken
         refeshToken
+        maBoPhan
+        tenBoPhan
       }
     }
   }

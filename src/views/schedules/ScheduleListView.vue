@@ -1,16 +1,39 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
+import {
+  createBulkAssignments,
+  mapBulkAssignments,
+} from '@/services/modules/schedule-bulk.service';
 import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
-import Dialog from 'primevue/dialog';
-import AssignmentCalendar, { type DayPlan } from '@/components/schedules/AssignmentCalendar.vue';
-import Drawer from 'primevue/drawer';
-import { useRecords } from '@/composables/useRecords';
+import { type DayPlan } from '@/components/schedules/AssignmentCalendar.vue';
+import ScheduleAssignmentDialogs from '@/components/schedules/dialogs/ScheduleAssignmentDialogs.vue';
+import ScheduleDrillDialog from '@/components/schedules/dialogs/ScheduleDrillDialog.vue';
+import ScheduleSwapDialogs from '@/components/schedules/dialogs/ScheduleSwapDialogs.vue';
+import ScheduleTemplateDialog from '@/components/schedules/dialogs/ScheduleTemplateDialog.vue';
+import ScheduleAssignmentTab from '@/components/schedules/tabs/ScheduleAssignmentTab.vue';
+import ScheduleCalendarTab from '@/components/schedules/tabs/ScheduleCalendarTab.vue';
+import ScheduleModuleNavigation from '@/components/schedules/tabs/ScheduleModuleNavigation.vue';
+import ScheduleReportsTab from '@/components/schedules/tabs/ScheduleReportsTab.vue';
+import ScheduleSwapsTab from '@/components/schedules/tabs/ScheduleSwapsTab.vue';
+import ScheduleTemplatesTab from '@/components/schedules/tabs/ScheduleTemplatesTab.vue';
+import { employeeService } from '@/services/modules/employee.service';
+import {
+  getEmployeesMissingSchedule,
+  getScheduleAssignments,
+  type UnscheduledScheduleEmployee,
+} from '@/services/modules/schedule-assignment.service';
+import type { HrRecord } from '@/types/common';
+
 import { usePermission } from '@/composables/usePermission';
 import { useToast } from '@/composables/useToast';
 import { scheduleService, conflicts } from '@/services/modules/schedule.service';
-import { systemToday, isPastScheduleDate } from '@/utils/schedule-date';
+import { fillUnassignedPlans } from '@/utils/schedule-fill';
+import { scheduleRange } from '@/utils/schedule-range';
+import { isPastScheduleDate } from '@/utils/schedule-date';
 import {
   getScheduleDepartments,
+  getScheduleDepartmentGroups,
+  type ScheduleDepartmentGroup,
   type ScheduleDepartment,
   getDepartmentShifts,
 } from '@/services/modules/schedule-shift.service';
@@ -26,9 +49,32 @@ import type {
 const route = useRoute(),
   router = useRouter(),
   permission = usePermission(),
-  toast = useToast(),
-  staff = useRecords('employees'),
-  departmentSettings = useRecords('departments');
+  toast = useToast();
+const staff = {
+  all: ref<HrRecord[]>([]),
+  loading: ref(false),
+  error: ref(''),
+  async load() {
+    staff.loading.value = true;
+    staff.error.value = '';
+    try {
+      staff.all.value = (await employeeService.list(null)).map((item) => ({
+        id: item.maNhanVien,
+        code: item.maNhanVien,
+        name: String(item.hoTen || [item.ho, item.tenDem, item.ten].filter(Boolean).join(' ')),
+        department: String(item.tenBoPhan || ''),
+        position: String(item.tenChucVu || ''),
+        positionCode: item.maChucVu == null ? '' : String(item.maChucVu),
+        status: String(item.trangThaiNhanVien ?? ''),
+      }));
+    } catch (e) {
+      staff.error.value = e instanceof Error ? e.message : String(e);
+    } finally {
+      staff.loading.value = false;
+    }
+  },
+};
+onMounted(() => staff.load());
 const departmentRecords = {
   all: ref<ScheduleDepartment[]>([]),
   loading: ref(false),
@@ -46,6 +92,32 @@ const departmentRecords = {
   },
 };
 onMounted(() => departmentRecords.load());
+const departmentGroups = ref<ScheduleDepartmentGroup[]>([]);
+const unclassifiedDepartments = ref<ScheduleDepartment[]>([]);
+const treeLoading = ref(false),
+  treeError = ref('');
+let treeRequest = 0;
+async function loadDepartmentTree() {
+  const request = ++treeRequest;
+  treeLoading.value = true;
+  treeError.value = '';
+  try {
+    const result = await getScheduleDepartmentGroups(departmentRecords.all.value);
+    if (request !== treeRequest) return;
+    departmentGroups.value = result.groups;
+    unclassifiedDepartments.value = result.unavailable;
+  } catch (e) {
+    if (request === treeRequest) treeError.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    if (request === treeRequest) treeLoading.value = false;
+  }
+}
+watch(
+  () => departmentRecords.all.value,
+  () => {
+    void loadDepartmentTree();
+  },
+);
 const data = ref<ScheduleData>({
   shifts: [],
   assignments: [],
@@ -53,6 +125,7 @@ const data = ref<ScheduleData>({
   swaps: [],
   history: [],
 });
+const scheduleEmployees = ref<UnscheduledScheduleEmployee[]>([]);
 const loading = ref(false),
   busy = ref(false),
   error = ref(''),
@@ -71,8 +144,7 @@ function dateKey(d: Date) {
 }
 const today = dateKey(new Date()),
   anchor = ref(today),
-  view = ref('week'),
-  dayLabels = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+  view = ref('week');
 function range(start: string, end: string) {
   const out: string[] = [];
   const d = new Date(start + 'T12:00:00');
@@ -82,15 +154,8 @@ function range(start: string, end: string) {
   }
   return out;
 }
-const dates = computed(() => {
-  const d = new Date(anchor.value + 'T12:00:00');
-  if (view.value === 'week') d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
-  if (view.value === 'month') d.setDate(1);
-  const end = new Date(d);
-  if (view.value === 'week') end.setDate(end.getDate() + 6);
-  if (view.value === 'month') end.setMonth(end.getMonth() + 1, 0);
-  return range(dateKey(d), dateKey(end));
-});
+const displayedRange = computed(() => scheduleRange(anchor.value, view.value));
+const dates = computed(() => range(displayedRange.value.from, displayedRange.value.to));
 function move(n: number) {
   const d = new Date(anchor.value + 'T12:00:00');
   if (view.value === 'month') {
@@ -123,12 +188,26 @@ function name(id: string) {
   const e = staff.all.value.find((e) => e.code === id);
   return e ? `${e.code} · ${e.name}` : id;
 }
+function employeeName(id: string) {
+  return staff.all.value.find((employee) => employee.code === id)?.name || id;
+}
 function shiftName(id: string) {
   if (id === 'OFF') return 'Nghỉ';
   const s = data.value.shifts.find((s) => s.id === id);
   return s
     ? `${s.name} · ${s.startTime}–${s.endTime}${s.crossDay ? ' (+1 ngày)' : ''}`
     : '⚠ Ca chưa có trong danh mục';
+}
+function employeeAssignments(id: string) {
+  return data.value.assignments
+    .filter((a) => a.employeeId === id && dates.value.includes(a.date) && matches(a))
+    .sort(
+      (a, b) =>
+        a.date.localeCompare(b.date) || (a.startTime || '').localeCompare(b.startTime || ''),
+    );
+}
+function symbol(a: Assignment) {
+  return a.shiftSymbol || data.value.shifts.find((s) => s.id === a.shiftId)?.code || a.shiftId;
 }
 function cell(id: string, date: string) {
   return data.value.assignments.find((a) => a.employeeId === id && a.date === date);
@@ -141,7 +220,7 @@ function label(a?: Assignment) {
       : a.status === 'LEAVE'
         ? 'Nghỉ phép'
         : (a.startTime && a.endTime
-            ? `${data.value.shifts.find((s) => s.id === a.shiftId)?.name || a.shiftId} · ${a.startTime}–${a.endTime}${a.crossDay ? ' (+1 ngày)' : ''}`
+            ? `${a.shiftName || data.value.shifts.find((s) => s.id === a.shiftId)?.name || a.shiftId} · ${a.startTime}–${a.endTime}${a.crossDay ? ' (+1 ngày)' : ''}`
             : shiftName(a.shiftId)) + (a.fullTime === false ? ' · 1/2 ca' : ' · Cả ca');
 }
 function matches(a?: Assignment) {
@@ -159,18 +238,56 @@ const pending = (a?: Assignment) =>
   data.value.swaps.some(
     (s) => s.status === 'PENDING' && [s.assignmentId, s.targetAssignmentId].includes(a.id),
   );
+let calendarRequest = 0;
 async function load() {
+  const request = ++calendarRequest;
   loading.value = true;
   error.value = '';
   try {
-    data.value = await scheduleService.load();
+    if (page.value === 'calendar') {
+      const calendar = await getScheduleAssignments(
+        displayedRange.value.from,
+        displayedRange.value.to,
+      );
+      if (request !== calendarRequest) return;
+      data.value = { ...data.value, ...calendar };
+    } else if (page.value === 'assign') {
+      const stored = await scheduleService.load();
+      if (request !== calendarRequest) return;
+      data.value = stored;
+    } else {
+      const stored = await scheduleService.load();
+      if (request !== calendarRequest) return;
+      data.value = stored;
+    }
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    if (request === calendarRequest) error.value = e instanceof Error ? e.message : String(e);
   } finally {
-    loading.value = false;
+    if (request === calendarRequest) loading.value = false;
   }
 }
 onMounted(load);
+let scheduleEmployeeRequest = 0;
+async function loadScheduleEmployees() {
+  if (page.value !== 'assign') return;
+  const request = ++scheduleEmployeeRequest;
+  const { start, end } = scheduleEmployeeRange.value;
+  try {
+    const employees = await getEmployeesMissingSchedule(start, end);
+    if (request === scheduleEmployeeRequest && page.value === 'assign')
+      scheduleEmployees.value = employees;
+  } catch (e) {
+    if (request === scheduleEmployeeRequest)
+      error.value = e instanceof Error ? e.message : String(e);
+  }
+}
+onMounted(loadScheduleEmployees);
+watch([page, () => displayedRange.value.from, () => displayedRange.value.to], ([currentPage]) => {
+  if (currentPage === 'calendar') void load();
+});
+watch(page, () => {
+  if (page.value !== 'calendar') void load();
+});
 async function run(job: () => Promise<ScheduleData>) {
   if (busy.value) return false;
   busy.value = true;
@@ -237,14 +354,24 @@ async function loadManualShifts() {
   manualShifts.value = [];
   const departmentCode =
     departmentRecords.all.value.find((d) => d.name === formDepartment.value)?.code || null;
+  if (!departmentCode) {
+    shiftsLoading.value = false;
+    return;
+  }
   try {
-    const shifts = await getDepartmentShifts(departmentCode, scheduleType.value);
+    const [shifts, calendar] = await Promise.all([
+      getDepartmentShifts(departmentCode, scheduleType.value),
+      getScheduleAssignments(calendarRange.value.start, calendarRange.value.end),
+    ]);
     if (request !== shiftRequest) return;
+    data.value.assignments = calendar.assignments;
     manualShifts.value = shifts;
+    if (!editing.value) scheduleType.value = shifts[0]?.scheduleType || 'ROTATING';
     data.value.shifts = [
       ...data.value.shifts.filter((s) => !shifts.some((item) => item.id === s.id)),
       ...shifts,
     ];
+    if (!editing.value && scheduleType.value === 'ADMINISTRATIVE') fillAdministrativePlans();
   } catch (e) {
     if (request === shiftRequest) shiftsError.value = e instanceof Error ? e.message : String(e);
   } finally {
@@ -256,7 +383,7 @@ watch(formDepartment, () => {
   manualShifts.value = [];
   shiftsLoading.value = false;
   shiftsError.value = '';
-  if (!editing.value && scheduleType.value !== 'ADMINISTRATIVE') dayPlans.value = [];
+  if (!editing.value) dayPlans.value = [];
 });
 watch(
   dayPlans,
@@ -266,24 +393,42 @@ watch(
   },
   { deep: true },
 );
-const eligible = computed(() =>
-  staff.all.value.filter(
-    (e) =>
-      (!formDepartment.value || e.department === formDepartment.value) &&
-      `${e.code} ${e.name}`.toLowerCase().includes(formSearch.value.toLowerCase()),
-  ),
-);
-// The department API supplies codes/names; schedule configuration remains in its existing source.
-function departmentScheduleType(departmentName = formDepartment.value): ScheduleType {
-  const code = departmentRecords.all.value.find((d) => d.name === departmentName)?.code;
-  return departmentSettings.all.value.find((d) => d.code === code || d.name === departmentName)
-    ?.workSchedule === 'administrativeSchedule'
-    ? 'ADMINISTRATIVE'
-    : 'ROTATING';
+const departmentRoster = computed(() => {
+  const departmentCode =
+    departmentRecords.all.value.find((item) => item.name === formDepartment.value)?.code || '';
+  return scheduleEmployees.value
+    .filter(
+      (item) =>
+        !formDepartment.value ||
+        item.maBoPhan === departmentCode ||
+        item.tenBoPhan === formDepartment.value,
+    )
+    .map((item) => ({
+      code: item.maNhanVien,
+      name: item.hoTen,
+      department: item.tenBoPhan || '',
+    }));
+});
+const eligible = computed(() => {
+  const roster = editing.value
+    ? staff.all.value
+        .filter((item) => item.code === editing.value?.employeeId)
+        .map((item) => ({
+          code: item.code,
+          name: item.name,
+          department: String(item.department || ''),
+        }))
+    : departmentRoster.value;
+  return roster.filter((item) =>
+    `${item.code} ${item.name}`.toLowerCase().includes(formSearch.value.toLowerCase()),
+  );
+});
+function departmentScheduleType(): ScheduleType {
+  return manualShifts.value[0]?.scheduleType || 'ROTATING';
 }
 
 const choices = computed(() =>
-  data.value.shifts.filter((s) => s.active && s.scheduleType === scheduleType.value),
+  manualShifts.value.filter((s) => s.active && s.scheduleType === scheduleType.value),
 );
 const calendarMode = ref<'week' | 'month'>('week'),
   calendarAnchor = ref(today);
@@ -296,37 +441,37 @@ const calendarRange = computed(() => {
   else last.setMonth(last.getMonth() + 1, 0);
   return { start: dateKey(first), end: dateKey(last) };
 });
+const scheduleEmployeeRange = computed(() => {
+  return calendarRange.value;
+});
+watch(
+  [page, () => scheduleEmployeeRange.value.start, () => scheduleEmployeeRange.value.end],
+  ([currentPage]) => {
+    if (currentPage === 'assign') void loadScheduleEmployees();
+  },
+);
 function fillAdministrativePlans(reset = false) {
-  const shift = data.value.shifts.find((item) => item.active && item.code === 'D');
+  const shift = manualShifts.value.find(
+    (item) => item.active && item.scheduleType === 'ADMINISTRATIVE',
+  );
   if (!formDepartment.value || !shift) {
     if (reset) dayPlans.value = [];
     return;
   }
-  const roster = staff.all.value.filter((item) => item.department === formDepartment.value);
-  const rows = reset ? [] : [...dayPlans.value];
-  const existing = new Set(rows.map((plan) => `${plan.employeeId}:${plan.date}`));
-  for (const employee of roster) {
-    for (const date of range(calendarRange.value.start, calendarRange.value.end)) {
-      if (isPastScheduleDate(date) || existing.has(`${employee.code}:${date}`)) continue;
-      rows.push({
-        employeeId: employee.code,
-        date,
-        shiftId: new Date(`${date}T12:00:00`).getDay() === 0 ? 'OFF' : shift.id,
-        fullTime: true,
-        note: '',
-      });
-    }
-  }
-  dayPlans.value = rows.sort((a, b) => a.date.localeCompare(b.date));
+  const roster = departmentRoster.value;
+  dayPlans.value = fillUnassignedPlans(
+    roster,
+    range(calendarRange.value.start, calendarRange.value.end),
+    shift,
+    data.value.assignments,
+    reset ? [] : dayPlans.value,
+  ).filter(
+    (plan) =>
+      !scheduleEmployees.value.some(
+        (item) => item.maNhanVien === plan.employeeId && item.danhSachNgayXepCa.includes(plan.date),
+      ),
+  );
 }
-const activeTemplates = computed(() =>
-  data.value.templates.filter(
-    (t) =>
-      t.active &&
-      t.scheduleType === scheduleType.value &&
-      (!t.department || t.department === formDepartment.value),
-  ),
-);
 watch(
   [selected, scheduleType, start, end, choice, method, pattern, templateId, note, bulk],
   () => {
@@ -350,20 +495,22 @@ watch(formDepartment, () => {
   if (!editing.value) scheduleType.value = departmentScheduleType();
   if (!editing.value && scheduleType.value === 'ADMINISTRATIVE') fillAdministrativePlans(true);
 });
-watch([() => departmentRecords.all.value, () => departmentSettings.all.value], () => {
-  if (!editing.value && formDepartment.value) scheduleType.value = departmentScheduleType();
+
+watch([formDepartment, calendarMode, calendarAnchor, () => departmentRecords.all.value], () => {
+  if (page.value === 'assign' && formDepartment.value) void loadManualShifts();
 });
 watch(
-  () => data.value.shifts.length,
+  () => scheduleEmployees.value,
   () => {
-    if (!editing.value && scheduleType.value === 'ADMINISTRATIVE' && formDepartment.value)
-      fillAdministrativePlans();
+    if (!editing.value && scheduleType.value === 'ADMINISTRATIVE') fillAdministrativePlans();
   },
 );
-watch([calendarMode, calendarAnchor], () => {
-  if (!editing.value && scheduleType.value === 'ADMINISTRATIVE' && formDepartment.value)
-    fillAdministrativePlans();
-});
+const scheduledDates = computed(() =>
+  scheduleEmployees.value.map((item) => ({
+    employeeId: item.maNhanVien,
+    dates: item.danhSachNgayXepCa,
+  })),
+);
 function initialize() {
   editing.value = undefined;
   dayPlans.value = [];
@@ -435,6 +582,14 @@ function makePreview() {
     error.value = 'Không được phân công ngày trong quá khứ.';
     return;
   }
+  if (
+    method.value === 'calendar' &&
+    scheduleType.value === 'ADMINISTRATIVE' &&
+    dayPlans.value.some((plan) => new Date(`${plan.date}T12:00:00`).getDay() === 0)
+  ) {
+    error.value = 'Không phân công ca hành chính vào Chủ nhật.';
+    return;
+  }
   if (!formDepartment.value) {
     error.value = 'Chọn bộ phận để xác định loại lịch phân công.';
     return;
@@ -460,7 +615,7 @@ function makePreview() {
       error.value = 'Chọn ít nhất một ngày trên lịch và ca cho ngày đó.';
       return;
     }
-    if (dayPlans.value.some((p) => !staff.all.value.some((e) => e.code === p.employeeId))) {
+    if (dayPlans.value.some((p) => !departmentRoster.value.some((e) => e.code === p.employeeId))) {
       error.value = 'Nhân viên trong phân công không còn tồn tại.';
       return;
     }
@@ -484,8 +639,7 @@ function makePreview() {
       error.value = 'Ca đã chọn không còn hoạt động hoặc không phù hợp loại lịch. Chọn lại ca.';
       return;
     }
-    preview.value = rows;
-    previewOpen.value = true;
+    openPreview(rows);
     return;
   }
   const t = data.value.templates.find((t) => t.id === templateId.value && t.active);
@@ -497,8 +651,7 @@ function makePreview() {
   for (const id of selected.value)
     range(start.value, end.value).forEach((date, index) => {
       const dow = (new Date(date + 'T12:00:00').getDay() + 6) % 7;
-      if (!editing.value && !bulk.value && scheduleType.value === 'ADMINISTRATIVE' && dow === 6)
-        return;
+      if (scheduleType.value === 'ADMINISTRATIVE' && dow === 6) return;
       const shiftId =
         method.value === 'template' && t
           ? t.days[t.kind === 'WEEK' ? dow : index % t.days.length]
@@ -525,10 +678,26 @@ function makePreview() {
     error.value = 'Chọn ca hợp lệ và ít nhất một ngày áp dụng.';
     return;
   }
-  preview.value = rows;
-  previewOpen.value = true;
+  openPreview(rows);
 }
 const issues = computed(() => conflicts(data.value, preview.value));
+function openPreview(rows: Assignment[]) {
+  preview.value = rows.map((row) => {
+    const shift = manualShifts.value.find((s) => s.id === row.shiftId);
+    if (!shift) return row;
+    const end = new Date(`${row.date}T12:00:00Z`);
+    if (shift.crossDay) end.setUTCDate(end.getUTCDate() + 1);
+    return {
+      ...row,
+      startTime: row.startTime || shift.startTime,
+      endTime: row.endTime || shift.endTime,
+      startDate: row.date,
+      endDate: end.toISOString().slice(0, 10),
+      crossDay: shift.crossDay,
+    };
+  });
+  previewOpen.value = true;
+}
 function autoAssignRotating() {
   error.value = '';
   const roster = staff.all.value.filter((item) => item.department === formDepartment.value);
@@ -549,27 +718,58 @@ function autoAssignRotating() {
     );
     preview.value = preview.value.filter((a) => !isPastScheduleDate(a.date));
     if (!preview.value.length) throw new Error('Không có ngày hợp lệ để phân công.');
-    previewOpen.value = true;
+    openPreview(preview.value);
   } catch (e) {
     error.value = e instanceof Error ? e.message : String(e);
   }
 }
 async function saveAssignments() {
+  if (busy.value || issues.value.length || !preview.value.length) return;
+  if (!permission.can('schedules', preview.value.length > 1 ? 'bulk' : 'create')) {
+    error.value = 'Bạn không có quyền tạo phân công này.';
+    return;
+  }
   if (preview.value.some((a) => isPastScheduleDate(a.date))) {
     error.value = 'Không được phân công ngày trong quá khứ.';
     return;
   }
-  if (issues.value.length) return;
-  if (
-    await run(() =>
-      scheduleService.assign(
-        preview.value.map((a) => ({ ...a })),
-        manualShifts.value,
-      ),
-    )
-  ) {
+  busy.value = true;
+  error.value = '';
+  try {
+    const department = departmentRecords.all.value.find((d) => d.name === formDepartment.value);
+    const payload = mapBulkAssignments(
+      preview.value,
+      manualShifts.value,
+      department?.code || '',
+      scheduleEmployees.value
+        .filter((e) => e.maBoPhan === department?.code || e.tenBoPhan === formDepartment.value)
+        .map((e) => ({ code: e.maNhanVien, positionCode: e.maChucVu })),
+    );
+    console.log('Saving assignments:', payload);
+    const result = await createBulkAssignments(payload);
+    if (result.thatBai > 0) {
+      error.value =
+        `Đã lưu ${result.thanhCong}/${result.tongSo}. ${result.thatBai} phân công thất bại. ` +
+        result.loi
+          .map((e) => `${e.maNhanVien} · ${e.ngayLamViec.slice(0, 10)}: ${e.message}`)
+          .join('\n');
+      const failed = new Set(
+        result.loi.map((e) => `${e.maNhanVien}:${e.ngayLamViec.slice(0, 10)}`),
+      );
+      preview.value = preview.value.filter((a) => failed.has(`${a.employeeId}:${a.date}`));
+      dayPlans.value = dayPlans.value.filter((a) => failed.has(`${a.employeeId}:${a.date}`));
+      return;
+    }
+    dayPlans.value = [];
+    dirty.value = false;
     previewOpen.value = false;
-    router.push('/schedules');
+    toast.success(`Đã lưu ${result.thanhCong} phân công ca.`);
+    await router.push('/schedules');
+    await load();
+  } catch (e) {
+    error.value = e instanceof Error ? e.message : String(e);
+  } finally {
+    busy.value = false;
   }
 }
 function editAssignment() {
@@ -605,6 +805,12 @@ function openTemplate(t?: ScheduleTemplate, copy = false, read = false) {
   templateRead.value = read;
   templateOpen.value = true;
 }
+async function saveTemplate() {
+  if (
+    await run(() => scheduleService.template({ ...template.value, days: [...template.value.days] }))
+  )
+    templateOpen.value = false;
+}
 async function applyTemplate(t: ScheduleTemplate) {
   await router.push('/schedules/assign');
   bulk.value = true;
@@ -618,7 +824,7 @@ async function applyTemplate(t: ScheduleTemplate) {
 const swapOpen = ref(false),
   swapTab = ref('ALL'),
   swap = ref({ assignmentId: '', targetAssignmentId: '', shiftId: '', reason: '' }),
-  swapMode = ref('employee'),
+  swapMode = ref<'employee' | 'shift'>('employee'),
   swapDetail = ref<SwapRequest>(),
   swapDetailOpen = ref(false),
   decision = ref('');
@@ -634,12 +840,6 @@ function assignmentLabel(id: string) {
   const a = data.value.assignments.find((a) => a.id === id);
   return a ? `${name(a.employeeId)} · ${fmt(a.date)} · ${label(a)}` : 'Lịch không còn tồn tại';
 }
-const swapLabels = {
-  PENDING: 'Chờ duyệt',
-  APPROVED: 'Đã duyệt',
-  REJECTED: 'Từ chối',
-  CANCELLED: 'Đã hủy',
-};
 const reportMode = ref('employee'),
   reportStart = ref(today.slice(0, 7) + '-01'),
   reportEnd = ref(today);
@@ -749,6 +949,15 @@ function swapAfter(request: SwapRequest, target = false) {
     ? `${name(a.employeeId)} · ${fmt(a.date)} · ${shiftName(shiftId || '')}`
     : 'Lịch không còn tồn tại';
 }
+async function sendSwapRequest() {
+  if (await run(() => scheduleService.request({ ...swap.value }))) swapOpen.value = false;
+}
+async function decideSwap(approve: boolean) {
+  const request = swapDetail.value;
+  if (!request) return;
+  if (await run(() => scheduleService.decide(request.id, approve, decision.value)))
+    swapDetailOpen.value = false;
+}
 </script>
 <template>
   <div class="shift-module">
@@ -765,16 +974,8 @@ function swapAfter(request: SwapRequest, target = false) {
         >+ Phân công ca</RouterLink
       >
     </div>
-    <nav class="tabs" aria-label="Xếp ca">
-      <RouterLink
-        v-for="m in menu"
-        :key="m.key"
-        :to="m.key === 'calendar' ? '/schedules' : '/schedules/' + m.key"
-        :class="{ active: page === m.key }"
-        >{{ m.label }}</RouterLink
-      >
-    </nav>
-    <p class="demo">
+    <ScheduleModuleNavigation :items="menu" :active-key="page" />
+    <p v-if="page !== 'calendar'" class="demo">
       ⓘ Chế độ demo · Dữ liệu lưu trên trình duyệt. API xếp ca thật chưa được cung cấp.
     </p>
     <p
@@ -836,799 +1037,188 @@ function swapAfter(request: SwapRequest, target = false) {
         >
         <label>Tìm kiếm<input v-model="search" placeholder="Mã NV hoặc họ tên" /></label>
       </section>
-      <template v-if="page === 'calendar'">
-        <div class="toolbar">
-          <div class="actions">
-            <button aria-label="Kỳ trước" @click="move(-1)">‹</button
-            ><button @click="anchor = today">Hôm nay</button
-            ><button aria-label="Kỳ sau" @click="move(1)">›</button
-            ><strong>{{ fmt(dates[0]) }} – {{ fmt(dates[dates.length - 1]) }}</strong>
-          </div>
-          <div class="actions">
-            <button
-              v-for="v in [
-                { id: 'day', name: 'Ngày' },
-                { id: 'week', name: 'Tuần' },
-                { id: 'month', name: 'Tháng' },
-              ]"
-              :key="v.id"
-              :class="{ chosen: view === v.id }"
-              @click="view = v.id"
-            >
-              {{ v.name }}
-            </button>
-          </div>
-        </div>
-        <div class="legend">
-          <span v-for="s in data.shifts" :key="s.id"
-            ><i :style="{ background: s.displayColor }" />{{ s.code }} · {{ s.name }}</span
-          ><span>○ Nghỉ</span><span>◇ Nghỉ phép</span><span>— Chưa xếp</span
-          ><span>↔ Chờ đổi ca</span>
-        </div>
-        <div v-if="!visibleEmployees.length" class="panel empty-state">
-          Không tìm thấy nhân viên theo bộ lọc.
-        </div>
-        <template v-else
-          ><p
-            v-if="
-              !data.assignments.some(
-                (a) =>
-                  dates.includes(a.date) && visibleEmployees.some((e) => e.code === a.employeeId),
-              )
-            "
-            class="demo"
-          >
-            Chưa có lịch làm việc trong khoảng thời gian này. Chọn Phân công ca để lập lịch.
-          </p>
-          <section class="panel grid-wrap">
-            <table class="grid">
-              <thead>
-                <tr>
-                  <th>
-                    NHÂN VIÊN<small>{{ visibleEmployees.length }} nhân viên</small>
-                  </th>
-                  <th
-                    v-for="d in dates"
-                    :key="d"
-                    :class="{
-                      today: d === today,
-                      weekend: [0, 6].includes(new Date(d + 'T12:00:00').getDay()),
-                    }"
-                  >
-                    {{ dayLabels[(new Date(d + 'T12:00:00').getDay() + 6) % 7]
-                    }}<small>{{ fmt(d) }}</small>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="e in visibleEmployees" :key="e.code">
-                  <th>
-                    <strong>{{ e.name }}</strong
-                    ><small>{{ e.code }} · {{ e.department }}</small>
-                  </th>
-                  <td
-                    v-for="d in dates"
-                    :key="d"
-                    :class="{
-                      today: d === today,
-                      weekend: [0, 6].includes(new Date(d + 'T12:00:00').getDay()),
-                    }"
-                  >
-                    <button
-                      v-if="matches(cell(e.code, d))"
-                      class="shift-cell"
-                      :title="label(cell(e.code, d))"
-                      :style="{
-                        '--shift-color':
-                          data.shifts.find((s) => s.id === cell(e.code, d)?.shiftId)
-                            ?.displayColor || '#94a3b8',
-                      }"
-                      :disabled="!cell(e.code, d) && !permission.can('schedules', 'create')"
-                      @click="open(e.code, d)"
-                    >
-                      <strong>{{
-                        cell(e.code, d)?.status === 'SCHEDULED'
-                          ? data.shifts.find((s) => s.id === cell(e.code, d)?.shiftId)?.name ||
-                            '⚠ Ca chưa xác định'
-                          : label(cell(e.code, d))
-                      }}</strong
-                      ><small v-if="cell(e.code, d)?.status === 'SCHEDULED'"
-                        >{{
-                          cell(e.code, d)?.startTime ||
-                          data.shifts.find((s) => s.id === cell(e.code, d)?.shiftId)?.startTime
-                        }}
-                        –
-                        {{
-                          cell(e.code, d)?.endTime ||
-                          data.shifts.find((s) => s.id === cell(e.code, d)?.shiftId)?.endTime
-                        }}</small
-                      ><small
-                        v-if="data.shifts.find((s) => s.id === cell(e.code, d)?.shiftId)?.crossDay"
-                        >+1 ngày</small
-                      ><small v-if="cell(e.code, d)?.status === 'SCHEDULED'">{{
-                        cell(e.code, d)?.fullTime === false ? '1/2 ca' : 'Cả ca'
-                      }}</small
-                      ><small v-if="pending(cell(e.code, d))">↔ Chờ duyệt đổi ca</small></button
-                    ><span v-else>—</span>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-          <section class="agenda">
-            <article v-for="d in dates" :key="d" class="panel">
-              <h3>{{ fmt(d) }} {{ d === today ? '· Hôm nay' : '' }}</h3>
-              <button
-                v-for="e in visibleEmployees.filter((e) => matches(cell(e.code, d)))"
-                :key="e.code"
-                @click="open(e.code, d)"
-              >
-                <strong>{{ name(e.code) }}</strong
-                ><small
-                  >{{ label(cell(e.code, d)) }}
-                  {{ pending(cell(e.code, d)) ? '↔ Chờ đổi ca' : '' }}</small
-                >
-              </button>
-            </article>
-          </section></template
-        >
-      </template>
-      <section
+      <ScheduleCalendarTab
+        v-if="page === 'calendar'"
+        v-model:view="view"
+        v-model:anchor="anchor"
+        :employees="
+          staff.all.value.map((item) => ({
+            code: item.code,
+            name: item.name,
+            department: String(item.department || ''),
+          }))
+        "
+        :visible-employees="
+          visibleEmployees.map((item) => ({
+            code: item.code,
+            name: item.name,
+            department: String(item.department || ''),
+          }))
+        "
+        :dates="dates"
+        :today="today"
+        :shifts="data.shifts"
+        :can-create="permission.can('schedules', 'create')"
+        :employee-assignments="employeeAssignments"
+        :cell="cell"
+        :matches="matches"
+        :fmt="fmt"
+        :name="name"
+        :shift-name="shiftName"
+        :symbol="symbol"
+        :label="label"
+        :pending="pending"
+        @move="move"
+        @open="open"
+      />
+      <ScheduleAssignmentTab
         v-if="page === 'assign'"
-        class="panel form"
+        v-model:bulk="bulk"
+        v-model:selected="selected"
+        v-model:form-department="formDepartment"
+        v-model:form-search="formSearch"
+        v-model:schedule-type="scheduleType"
+        v-model:method="method"
+        v-model:day-plans="dayPlans"
+        v-model:calendar-mode="calendarMode"
+        v-model:calendar-anchor="calendarAnchor"
+        :editing="editing"
+        :busy="busy"
+        :can-create="permission.can('schedules', 'create')"
+        :can-edit="permission.can('schedules', editing ? 'edit' : bulk ? 'bulk' : 'create')"
+        :can-bulk="permission.can('schedules', 'bulk')"
+        :tree-loading="treeLoading"
+        :tree-error="treeError"
+        :department-groups="departmentGroups"
+        :unclassified-departments="unclassifiedDepartments"
+        :load-department-tree="loadDepartmentTree"
+        :shifts-loading="shiftsLoading"
+        :shifts-error="shiftsError"
+        :load-manual-shifts="loadManualShifts"
+        :eligible="eligible"
+        :name="name"
+        :manual-shifts="manualShifts"
+        :data="data"
+        :scheduled-dates="scheduledDates"
+        :start="start"
+        :administrative-shift-id="
+          data.shifts.find((shift) => shift.active && shift.code === 'D')?.id
+        "
+        :make-preview="makePreview"
+        :auto-assign-rotating="autoAssignRotating"
         @input="dirty = true"
         @change="dirty = true"
-      >
-        <div class="toolbar">
-          <h2>{{ editing ? 'Sửa phân công' : 'Tạo phân công' }}</h2>
-          <div v-if="!editing" class="actions">
-            <button
-              :class="{ chosen: !bulk }"
-              @click="
-                bulk = false;
-                selected = [];
-                method = 'calendar';
-              "
-            >
-              Cá nhân</button
-            ><button
-              v-if="permission.can('schedules', 'bulk')"
-              :class="{ chosen: bulk }"
-              @click="
-                bulk = true;
-                selected = [];
-              "
-            >
-              Hàng loạt
-            </button>
-          </div>
-        </div>
-        <p v-if="!permission.can('schedules', editing ? 'edit' : bulk ? 'bulk' : 'create')">
-          Bạn không có quyền phân công ca.
-        </p>
-        <template v-else
-          ><div class="form-grid">
-            <label
-              >Bộ phận *<select v-model="formDepartment" :disabled="!!editing">
-                <option value="">Chọn bộ phận</option>
-                <option v-for="d in departments" :key="d">{{ d }}</option>
-              </select></label
-            >
-          </div>
-          <p v-if="formDepartment" class="department-schedule-type">
-            Loại lịch của bộ phận:
-            {{ scheduleType === 'ADMINISTRATIVE' ? 'Hành chính' : 'Làm theo ca' }}
-          </p>
-          <h3>
-            {{
-              method === 'calendar'
-                ? 'Tìm nhân viên trong lịch'
-                : '1. Chọn nhân viên · ' + selected.length + ' đã chọn'
-            }}
-          </h3>
-          <input
-            v-model="formSearch"
-            placeholder="Tìm mã NV hoặc họ tên"
-            aria-label="Tìm nhân viên"
-          />
-          <div v-if="method !== 'calendar'" class="employee-picker">
-            <label v-if="bulk"
-              ><input
-                type="checkbox"
-                :checked="!!eligible.length && eligible.every((e) => selected.includes(e.code))"
-                @change="
-                  selected = eligible.every((e) => selected.includes(e.code))
-                    ? []
-                    : eligible.map((e) => e.code)
-                "
-              />Chọn tất cả kết quả</label
-            ><label v-for="e in eligible" :key="e.code"
-              ><input v-if="bulk" v-model="selected" type="checkbox" :value="e.code" /><input
-                v-else
-                type="radio"
-                name="employee"
-                :checked="selected.includes(e.code)"
-                :disabled="!!editing"
-                @change="selected = [e.code]"
-              />{{ name(e.code) }}</label
-            >
-            <p v-if="!eligible.length">Không tìm thấy nhân viên.</p>
-          </div>
-          <label v-if="bulk && !editing"
-            >Cách phân công<select v-model="method">
-              <option value="calendar">Chọn ngày trên lịch</option>
-              <option value="single">Một ca cho khoảng ngày</option>
-              <option value="weekly">Theo ngày trong tuần</option>
-              <option value="template">Áp dụng mẫu lịch</option>
-              <option value="cycle">Chu kỳ xoay ca</option>
-            </select></label
-          >
-          <AssignmentCalendar
-            v-if="method === 'calendar'"
-            :key="editing?.id || start"
-            v-model="dayPlans"
-            :employees="
-              (editing ? eligible.filter((e) => e.code === editing?.employeeId) : eligible).map(
-                (e) => ({ code: e.code, name: e.name, department: String(e.department || '') }),
-              )
-            "
-            :shifts="scheduleType === 'ADMINISTRATIVE' ? choices : manualShifts"
-            :shifts-loading="shiftsLoading"
-            :shifts-error="shiftsError"
-            @request-shifts="loadManualShifts"
-            :view-mode="calendarMode"
-            :anchor-date="calendarAnchor"
-            @update:view-mode="calendarMode = $event"
-            @update:anchor-date="calendarAnchor = $event"
-            :administrative="scheduleType === 'ADMINISTRATIVE'"
-            :administrative-shift-id="data.shifts.find((s) => s.active && s.code === 'D')?.id"
-            :initial-date="start"
-            :fixed-date="editing?.date"
-            :disabled="busy"
-          />
-          <div v-if="scheduleType === 'ROTATING'" class="auto-schedule">
-            <h3>Tự động xếp ca xoay</h3>
-            <p>
-              Phạm vi {{ calendarMode === 'week' ? 'tuần' : 'tháng' }} đang xem · mỗi nhân viên nghỉ
-              1 ngày/tuần · ca M/E tối đa 2 người mỗi ngày · ca N nhận phần còn lại.
-              <template v-if="calendarMode === 'month'">
-                Lịch tháng bao gồm trọn các tuần chạm vào tháng đã chọn.
-              </template>
-            </p>
-          </div>
-          <template v-else>
-            <h3>2. Cấu hình phân công</h3>
-            <div class="form-grid">
-              <label
-                >Từ ngày *<input
-                  v-model="start"
-                  type="date"
-                  :min="systemToday()"
-                  :disabled="!!editing" /></label
-              ><label
-                >Đến ngày *<input
-                  v-model="end"
-                  type="date"
-                  :min="systemToday()"
-                  :disabled="!!editing" /></label
-              ><label v-if="!bulk || method === 'single'"
-                >Ca *<select v-model="choice">
-                  <option value="">Chọn ca</option>
-                  <option v-for="s in choices" :key="s.id" :value="s.id">
-                    {{ shiftName(s.id) }}
-                  </option>
-                  <option value="OFF">Nghỉ</option>
-                </select></label
-              ><label v-if="bulk && method === 'template'"
-                >Mẫu lịch *<select v-model="templateId">
-                  <option value="">Chọn mẫu</option>
-                  <option v-for="t in activeTemplates" :key="t.id" :value="t.id">
-                    {{ t.name }}
-                  </option>
-                </select></label
-              >
-            </div>
-            <div v-if="bulk && ['weekly', 'cycle'].includes(method)" class="pattern">
-              <label v-for="(_, i) in pattern" :key="i"
-                >{{ method === 'weekly' ? dayLabels[i] : 'Ngày ' + (i + 1)
-                }}<select v-model="pattern[i]">
-                  <option value="OFF">Nghỉ</option>
-                  <option v-for="s in choices" :key="s.id" :value="s.id">{{ s.name }}</option>
-                </select></label
-              ><button v-if="method === 'cycle'" @click="pattern.push('OFF')">+ Thêm ngày</button
-              ><button v-if="method === 'cycle' && pattern.length > 1" @click="pattern.pop()">
-                Bỏ ngày cuối
-              </button>
-            </div>
-            <label>Ghi chú<textarea v-model="note" rows="3" /></label
-          ></template>
-          <div class="actions schedule-actions">
-            <button
-              v-if="scheduleType === 'ROTATING'"
-              class="auto-schedule-button"
-              :disabled="busy || !formDepartment"
-              @click="autoAssignRotating"
-            >
-              Tự động xếp ca
-            </button>
-            <button
-              class="primary"
-              :disabled="busy || (method === 'calendar' ? !dayPlans.length : !selected.length)"
-              @click="makePreview"
-            >
-              Xem trước phân công</button
-            ><span>Không ghi đè lịch âm thầm.</span>
-          </div></template
-        >
-      </section>
-      <section v-if="page === 'templates'" class="panel form">
-        <div class="toolbar">
-          <div>
-            <h2>Mẫu lịch tái sử dụng</h2>
-            <p>Mẫu chỉ trở thành lịch thực tế khi được áp dụng.</p>
-          </div>
-          <button
-            v-if="permission.can('schedules', 'create')"
-            class="primary"
-            @click="openTemplate()"
-          >
-            + Tạo mẫu
-          </button>
-        </div>
-        <p v-if="!data.templates.length" class="empty-state">
-          Chưa có mẫu lịch. Tạo mẫu để tái sử dụng khi phân công.
-        </p>
-        <article v-for="t in data.templates" :key="t.id" class="template-card">
-          <div class="toolbar">
-            <h3>{{ t.name }}</h3>
-            <span>{{ t.active ? 'Hoạt động' : 'Ngừng sử dụng' }}</span>
-          </div>
-          <p>
-            {{ t.scheduleType === 'ADMINISTRATIVE' ? 'Hành chính' : 'Xoay ca' }} ·
-            {{ t.department || 'Tất cả bộ phận' }} ·
-            {{ t.kind === 'WEEK' ? 'Tuần' : 'Chu kỳ ' + t.days.length + ' ngày' }}
-          </p>
-          <div class="pattern">
-            <span v-for="(id, i) in t.days" :key="i"
-              ><small>{{ t.kind === 'WEEK' ? dayLabels[i] : i + 1 }}</small
-              >{{ id === 'OFF' ? 'Nghỉ' : data.shifts.find((s) => s.id === id)?.name }}</span
-            >
-          </div>
-          <div class="actions">
-            <button @click="openTemplate(t, false, true)">Xem</button
-            ><button v-if="permission.can('schedules', 'edit')" @click="openTemplate(t)">Sửa</button
-            ><button v-if="permission.can('schedules', 'create')" @click="openTemplate(t, true)">
-              Nhân bản</button
-            ><button
-              v-if="permission.can('schedules', 'edit')"
-              :disabled="busy"
-              @click="
-                run(() => scheduleService.template({ ...t, days: [...t.days], active: !t.active }))
-              "
-            >
-              {{ t.active ? 'Ngừng sử dụng' : 'Kích hoạt' }}</button
-            ><button
-              v-if="t.active && permission.can('schedules', 'bulk')"
-              @click="applyTemplate(t)"
-            >
-              Áp dụng mẫu
-            </button>
-          </div>
-        </article>
-      </section>
-      <section v-if="page === 'swaps'" class="panel form">
-        <div class="toolbar">
-          <div class="actions">
-            <button @click="swapTab = 'ALL'">Yêu cầu</button
-            ><button v-if="permission.can('schedules', 'approve')" @click="swapTab = 'PENDING'">
-              Chờ tôi duyệt</button
-            ><button @click="swapTab = 'DONE'">Đã xử lý</button>
-          </div>
-          <button
-            v-if="permission.can('schedules', 'create')"
-            class="primary"
-            @click="
-              swap = { assignmentId: '', targetAssignmentId: '', shiftId: '', reason: '' };
-              swapOpen = true;
-            "
-          >
-            + Tạo yêu cầu
-          </button>
-        </div>
-        <div class="table-scroll">
-          <table class="report">
-            <thead>
-              <tr>
-                <th>Mã yêu cầu</th>
-                <th>Ca hiện tại</th>
-                <th>Đổi với / ca sau đổi</th>
-                <th>Lý do</th>
-                <th>Ngày gửi</th>
-                <th>Trạng thái</th>
-                <th>Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="s in swapRows" :key="s.id">
-                <td>{{ s.code }}</td>
-                <td>{{ assignmentLabel(s.assignmentId) }}</td>
-                <td>
-                  {{
-                    s.targetAssignmentId
-                      ? assignmentLabel(s.targetAssignmentId)
-                      : shiftName(s.shiftId)
-                  }}
-                </td>
-                <td>{{ s.reason }}</td>
-                <td>{{ new Date(s.createdAt).toLocaleString('vi-VN') }}</td>
-                <td>{{ swapLabels[s.status] }}</td>
-                <td>
-                  <button
-                    @click="
-                      swapDetail = s;
-                      decision = '';
-                      swapDetailOpen = true;
-                    "
-                  >
-                    Xem
-                  </button>
-                </td>
-              </tr>
-              <tr v-if="!swapRows.length">
-                <td colspan="7" class="empty-state">Không có yêu cầu trong trạng thái này.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-      <section v-if="page === 'reports'" class="panel form">
-        <div class="toolbar">
-          <div class="actions">
-            <button
-              v-for="r in [
-                { id: 'employee', name: 'Theo nhân viên' },
-                { id: 'department', name: 'Theo bộ phận' },
-                { id: 'shift', name: 'Theo ca' },
-              ]"
-              :key="r.id"
-              :class="{ chosen: reportMode === r.id }"
-              @click="reportMode = r.id"
-            >
-              {{ r.name }}
-            </button>
-          </div>
-          <label>Từ ngày<input v-model="reportStart" type="date" /></label
-          ><label>Đến ngày<input v-model="reportEnd" type="date" /></label>
-        </div>
-        <p>Tổng hợp từ lịch đã phân công; không tính công, OT hoặc giờ tính lương.</p>
-        <p v-if="reportStart > reportEnd" class="error">Từ ngày không được lớn hơn đến ngày.</p>
-        <div v-else class="table-scroll">
-          <table class="report">
-            <thead>
-              <tr>
-                <th>
-                  {{
-                    reportMode === 'employee'
-                      ? 'Nhân viên'
-                      : reportMode === 'department'
-                        ? 'Bộ phận'
-                        : 'Ca'
-                  }}
-                </th>
-                <th>{{ reportMode === 'employee' ? 'Ngày làm' : 'Số nhân viên' }}</th>
-                <th v-if="reportMode === 'employee'">Ngày nghỉ</th>
-                <th>Số phân công</th>
-                <th>Chi tiết</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="r in reports" :key="r.key">
-                <td>
-                  <strong>{{ r.name }}</strong
-                  ><small>{{ r.sub }}</small>
-                </td>
-                <td>{{ r.work }}</td>
-                <td v-if="reportMode === 'employee'">{{ r.off }}</td>
-                <td>{{ r.count }}</td>
-                <td><button @click="drillReport(r.key)">Xem lịch</button></td>
-              </tr>
-              <tr v-if="!reportAssignments.length">
-                <td colspan="5" class="empty-state">
-                  Chưa có lịch phù hợp trong khoảng ngày đã chọn.
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </template>
-    <Drawer
-      v-model:visible="detailOpen"
-      header="Chi tiết phân công"
-      position="right"
-      class="schedule-drawer"
-      ><template v-if="detail"
-        ><h3>{{ name(detail.employeeId) }}</h3>
-        <p>
-          {{ fmt(detail.date) }} ·
-          {{ detail.scheduleType === 'ADMINISTRATIVE' ? 'Hành chính' : 'Xoay ca' }}
-        </p>
-        <p>{{ label(detail) }}</p>
-        <p>{{ detail.note || 'Chưa có ghi chú' }}</p>
-        <p v-if="pending(detail)">↔ Có yêu cầu đổi ca chờ duyệt</p>
-        <div class="actions">
-          <button @click="historyOpen = !historyOpen">Lịch sử</button
-          ><button v-if="permission.can('schedules', 'edit')" @click="editAssignment">
-            Sửa phân công
-          </button>
-        </div>
-        <ul v-if="historyOpen">
-          <li v-for="(h, i) in data.history.filter((h) => h.assignmentId === detail?.id)" :key="i">
-            {{ h.action }} · {{ new Date(h.date).toLocaleString('vi-VN') }}
-          </li>
-          <li v-if="!data.history.some((h) => h.assignmentId === detail?.id)">
-            Chưa có lịch sử thay đổi.
-          </li>
-        </ul></template
-      ></Drawer
-    >
-    <Dialog
-      v-model:visible="previewOpen"
-      modal
-      header="Xem trước phân công"
-      :style="{ width: '900px', maxWidth: '95vw' }"
-      ><div class="schedule-dialog">
-        <p>
-          {{ preview.length }} phân công ·
-          {{ new Set(preview.map((a) => a.employeeId)).size }}
-          nhân viên
-        </p>
-        <div v-if="issues.length" class="error">
-          <strong>⚠ {{ issues.length }} xung đột — không thể lưu</strong>
-          <p v-for="(i, index) in issues" :key="index">
-            {{ name(i.row.employeeId) }} · {{ fmt(i.row.date) }}<br />Ca mới: {{ label(i.row)
-            }}<br />Đã có: {{ label(i.existing) }} · {{ fmt(i.existing.date) }}<br />{{ i.reason }}
-          </p>
-        </div>
-        <div class="table-scroll preview-table">
-          <table class="report">
-            <thead>
-              <tr>
-                <th>Nhân viên</th>
-                <th>Ngày</th>
-                <th>Ca dự kiến</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="(a, i) in preview" :key="i">
-                <td>{{ name(a.employeeId) }}</td>
-                <td>{{ fmt(a.date) }}</td>
-                <td>{{ label(a) }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <p v-if="error" class="error">{{ error }}</p>
-        <div class="actions">
-          <button :disabled="busy" @click="previewOpen = false">Quay lại</button
-          ><button
-            class="primary"
-            :disabled="busy || !!issues.length || !preview.length"
-            @click="saveAssignments"
-          >
-            {{ busy ? 'Đang lưu…' : 'Lưu phân công' }}
-          </button>
-        </div>
-      </div></Dialog
-    >
-    <Dialog
-      v-model:visible="templateOpen"
-      modal
-      :header="templateRead ? 'Chi tiết mẫu lịch' : 'Cấu hình mẫu lịch'"
-      :style="{ width: '800px', maxWidth: '95vw' }"
-      ><div class="schedule-dialog">
-        <fieldset :disabled="templateRead || busy">
-          <div class="form-grid">
-            <label>Tên mẫu *<input v-model="template.name" /></label
-            ><label
-              >Loại lịch<select
-                v-model="template.scheduleType"
-                @change="template.days = Array(template.days.length).fill('OFF')"
-              >
-                <option value="ADMINISTRATIVE">Hành chính</option>
-                <option value="ROTATING">Xoay ca</option>
-              </select></label
-            ><label
-              >Bộ phận<select v-model="template.department">
-                <option value="">Tất cả</option>
-                <option v-for="d in departments" :key="d">{{ d }}</option>
-              </select></label
-            ><label
-              >Loại mẫu<select
-                v-model="template.kind"
-                @change="template.days = Array(7).fill('OFF')"
-              >
-                <option value="WEEK">Mẫu tuần</option>
-                <option value="CYCLE">Chu kỳ xoay</option>
-              </select></label
-            >
-          </div>
-          <div class="pattern">
-            <label v-for="(_, i) in template.days" :key="i"
-              >{{ template.kind === 'WEEK' ? dayLabels[i] : 'Ngày ' + (i + 1)
-              }}<select v-model="template.days[i]">
-                <option value="OFF">Nghỉ</option>
-                <option
-                  v-for="s in data.shifts.filter(
-                    (s) => s.active && s.scheduleType === template.scheduleType,
-                  )"
-                  :key="s.id"
-                  :value="s.id"
-                >
-                  {{ s.name }}
-                </option>
-              </select></label
-            ><button v-if="template.kind === 'CYCLE'" @click="template.days.push('OFF')">
-              + Thêm ngày</button
-            ><button
-              v-if="template.kind === 'CYCLE' && template.days.length > 1"
-              @click="template.days.pop()"
-            >
-              Bỏ ngày cuối
-            </button>
-          </div>
-          <label>Ghi chú<textarea v-model="template.note" /></label>
-        </fieldset>
-        <p v-if="error" class="error">{{ error }}</p>
-        <button
-          v-if="!templateRead"
-          class="primary"
-          :disabled="busy"
-          @click="
-            run(() => scheduleService.template({ ...template, days: [...template.days] })).then(
-              (ok) => {
-                if (ok) templateOpen = false;
-              },
+      />
+      <ScheduleTemplatesTab
+        v-if="page === 'templates'"
+        :templates="data.templates"
+        :shifts="data.shifts"
+        :departments="departments"
+        :busy="busy"
+        :can-create="permission.can('schedules', 'create')"
+        :can-edit="permission.can('schedules', 'edit')"
+        :can-bulk="permission.can('schedules', 'bulk')"
+        @create="openTemplate()"
+        @open="openTemplate"
+        @toggle="
+          (template) =>
+            run(() =>
+              scheduleService.template({
+                ...template,
+                days: [...template.days],
+                active: !template.active,
+              }),
             )
-          "
-        >
-          {{ busy ? 'Đang lưu…' : 'Lưu mẫu' }}
-        </button>
-      </div></Dialog
-    >
-    <Dialog
-      v-model:visible="swapOpen"
-      modal
-      header="Tạo yêu cầu đổi ca"
-      :style="{ width: '650px', maxWidth: '95vw' }"
-      ><div class="schedule-dialog">
-        <label
-          >Ca muốn đổi *<select v-model="swap.assignmentId">
-            <option value="">Chọn ca đã phân công</option>
-            <option v-for="a in scheduled" :key="a.id" :value="a.id">
-              {{ assignmentLabel(a.id) }}
-            </option>
-          </select></label
-        ><label
-          >Hình thức<select
-            v-model="swapMode"
-            @change="
-              swap.targetAssignmentId = '';
-              swap.shiftId = '';
-            "
-          >
-            <option value="employee">Đổi với nhân viên khác</option>
-            <option value="shift">Xin đổi sang ca khác</option>
-          </select></label
-        ><label v-if="swapMode === 'employee'"
-          >Ca của nhân viên đổi cùng<select v-model="swap.targetAssignmentId">
-            <option value="">Chọn nhân viên / ca</option>
-            <option
-              v-for="a in scheduled.filter(
-                (a) =>
-                  a.employeeId !==
-                  data.assignments.find((s) => s.id === swap.assignmentId)?.employeeId,
-              )"
-              :key="a.id"
-              :value="a.id"
-            >
-              {{ assignmentLabel(a.id) }}
-            </option>
-          </select></label
-        ><label v-else
-          >Ca muốn đổi sang<select v-model="swap.shiftId">
-            <option value="">Chọn ca</option>
-            <option v-for="s in data.shifts.filter((s) => s.active)" :key="s.id" :value="s.id">
-              {{ shiftName(s.id) }}
-            </option>
-          </select></label
-        ><label>Lý do *<textarea v-model="swap.reason" /></label>
-        <p v-if="error" class="error">{{ error }}</p>
-        <button
-          class="primary"
-          :disabled="busy"
-          @click="
-            run(() => scheduleService.request({ ...swap })).then((ok) => {
-              if (ok) swapOpen = false;
-            })
-          "
-        >
-          {{ busy ? 'Đang gửi…' : 'Gửi yêu cầu' }}
-        </button>
-      </div></Dialog
-    >
-    <Drawer
-      v-model:visible="swapDetailOpen"
-      header="Chi tiết yêu cầu đổi ca"
-      position="right"
-      class="schedule-drawer"
-      ><template v-if="swapDetail"
-        ><h3>{{ swapDetail.code }} · {{ swapLabels[swapDetail.status] }}</h3>
-        <h4>Trước khi đổi</h4>
-        <p>{{ swapBefore(swapDetail) }}</p>
-        <p v-if="swapDetail.targetAssignmentId">
-          {{ swapBefore(swapDetail, true) }}
-        </p>
-        <h4>Sau khi đổi (dự kiến)</h4>
-        <p>{{ swapAfter(swapDetail) }}</p>
-        <p v-if="swapDetail.targetAssignmentId">{{ swapAfter(swapDetail, true) }}</p>
-        <p>Lý do: {{ swapDetail.reason }}</p>
-        <p v-if="swapDetail.decision">Phản hồi: {{ swapDetail.decision }}</p>
-        <template v-if="swapDetail.status === 'PENDING' && permission.can('schedules', 'approve')"
-          ><label>Phản hồi / lý do từ chối<textarea v-model="decision" /></label>
-          <p v-if="error" class="error">{{ error }}</p>
-          <div class="actions">
-            <button
-              :disabled="busy"
-              @click="
-                run(() => scheduleService.decide(swapDetail!.id, false, decision)).then((ok) => {
-                  if (ok) swapDetailOpen = false;
-                })
-              "
-            >
-              Từ chối</button
-            ><button
-              class="primary"
-              :disabled="busy"
-              @click="
-                run(() => scheduleService.decide(swapDetail!.id, true, decision)).then((ok) => {
-                  if (ok) swapDetailOpen = false;
-                })
-              "
-            >
-              Duyệt đổi ca
-            </button>
-          </div></template
-        ></template
-      ></Drawer
-    >
-    <Dialog
-      v-model:visible="drillOpen"
-      modal
-      header="Lịch chi tiết"
-      :style="{ width: '800px', maxWidth: '95vw' }"
-      ><div class="table-scroll schedule-dialog">
-        <table class="report">
-          <thead>
-            <tr>
-              <th>Nhân viên</th>
-              <th>Ngày</th>
-              <th>Phân công</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="a in drill" :key="a.id">
-              <td>{{ name(a.employeeId) }}</td>
-              <td>{{ fmt(a.date) }}</td>
-              <td>{{ label(a) }}</td>
-            </tr>
-            <tr v-if="!drill.length">
-              <td colspan="3">Chưa có lịch phù hợp.</td>
-            </tr>
-          </tbody>
-        </table>
-      </div></Dialog
-    >
+        "
+        @apply="applyTemplate"
+      />
+      <ScheduleSwapsTab
+        v-if="page === 'swaps'"
+        v-model:tab="swapTab"
+        :rows="swapRows"
+        :can-approve="permission.can('schedules', 'approve')"
+        :can-create="permission.can('schedules', 'create')"
+        :assignment-label="assignmentLabel"
+        :shift-name="shiftName"
+        @create="
+          swap = { assignmentId: '', targetAssignmentId: '', shiftId: '', reason: '' };
+          swapOpen = true;
+        "
+        @detail="
+          swapDetail = $event;
+          decision = '';
+          swapDetailOpen = true;
+        "
+      />
+      <ScheduleReportsTab
+        v-if="page === 'reports'"
+        v-model:report-mode="reportMode"
+        v-model:report-start="reportStart"
+        v-model:report-end="reportEnd"
+        :reports="reports"
+        :assignment-count="reportAssignments.length"
+        @drill="drillReport"
+      />
+    </template>
+    <ScheduleAssignmentDialogs
+      v-model:detail="detail"
+      v-model:detail-open="detailOpen"
+      v-model:history-open="historyOpen"
+      v-model:preview="preview"
+      v-model:preview-open="previewOpen"
+      :history="data.history"
+      :issues="issues"
+      :error="error"
+      :busy="busy"
+      :today="today"
+      :can-edit="permission.can('schedules', 'edit')"
+      :name="name"
+      :employee-name="employeeName"
+      :fmt="fmt"
+      :label="label"
+      :symbol="symbol"
+      :pending="pending"
+      :save-assignments="saveAssignments"
+      :edit-assignment="editAssignment"
+      @close-preview="previewOpen = false"
+    />
+    <ScheduleTemplateDialog
+      v-model:open="templateOpen"
+      v-model:read="templateRead"
+      v-model:template="template"
+      :departments="departments"
+      :shifts="data.shifts"
+      :busy="busy"
+      :error="error"
+      @save="saveTemplate"
+    />
+    <ScheduleSwapDialogs
+      v-model:open="swapOpen"
+      v-model:detail-open="swapDetailOpen"
+      v-model:swap="swap"
+      v-model:mode="swapMode"
+      v-model:detail="swapDetail"
+      v-model:decision="decision"
+      :scheduled="scheduled"
+      :assignments="data.assignments"
+      :shifts="data.shifts"
+      :busy="busy"
+      :error="error"
+      :can-approve="permission.can('schedules', 'approve')"
+      :assignment-label="assignmentLabel"
+      :shift-name="shiftName"
+      :swap-before="swapBefore"
+      :swap-after="swapAfter"
+      @send="sendSwapRequest"
+      @decide="decideSwap"
+    />
+    <ScheduleDrillDialog
+      v-model:open="drillOpen"
+      :assignments="drill"
+      :name="name"
+      :fmt="fmt"
+      :label="label"
+    />
   </div>
 </template>
 <style>
@@ -1922,10 +1512,91 @@ function swapAfter(request: SwapRequest, target = false) {
   background: #f8fafc;
   color: #64748b;
 }
-.schedule-dialog .preview-table {
-  max-height: 45vh;
+.schedule-dialog .preview-calendar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin: 12px 0;
+}
+.schedule-dialog .preview-calendar-mode {
+  display: flex;
+  gap: 4px;
+}
+.schedule-dialog .preview-calendar-mode .active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+.schedule-dialog .preview-calendar-scroll {
   overflow: auto;
-  margin-bottom: 20px;
+  max-height: 55vh;
+}
+.schedule-dialog .preview-calendar-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+}
+.schedule-dialog .preview-calendar-table th,
+.schedule-dialog .preview-calendar-table td {
+  padding: 8px;
+  border-right: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: center;
+}
+.schedule-dialog .preview-calendar-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-width: 82px;
+  color: #64748b;
+  background: #f8fafc;
+}
+.schedule-dialog .preview-calendar-table thead small,
+.schedule-dialog .preview-calendar-employee small {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-weight: 400;
+}
+.schedule-dialog .preview-calendar-table th.today {
+  background: #eff6ff;
+}
+.schedule-dialog .preview-calendar-table .weekend {
+  background: #f8fafc;
+}
+.schedule-dialog .preview-calendar-table .preview-calendar-employee {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 175px;
+  max-width: 175px;
+  text-align: left;
+  background: #fff;
+}
+.schedule-dialog .preview-calendar-table thead .preview-calendar-employee {
+  z-index: 3;
+  background: #f8fafc;
+}
+.schedule-dialog .preview-calendar-table td {
+  min-width: 82px;
+  height: 54px;
+}
+.schedule-dialog .preview-calendar-table td strong,
+.schedule-dialog .preview-calendar-table td small {
+  display: block;
+}
+.schedule-dialog .preview-calendar-table td small {
+  margin-top: 3px;
+  color: #64748b;
+}
+.schedule-dialog .mode-month .preview-calendar-table th:not(.preview-calendar-employee),
+.schedule-dialog .mode-month .preview-calendar-table td {
+  min-width: 64px;
+  padding: 6px 4px;
 }
 .schedule-dialog fieldset {
   border: 0;
@@ -1980,6 +1651,229 @@ function swapAfter(request: SwapRequest, target = false) {
   }
   .shift-module .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.month-calendar {
+  overflow: hidden;
+}
+.month-heading,
+.month-row {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+}
+.month-heading {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 12px;
+}
+.month-heading > strong {
+  padding: 16px 20px;
+}
+.month-row {
+  border-top: 1px solid #e2e8f0;
+}
+.calendar-employee {
+  padding: 20px;
+  min-width: 0;
+}
+.month-row > .calendar-employee {
+  background: #fafbfc;
+  border-right: 1px solid #e2e8f0;
+}
+.month-shifts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 16px;
+  align-items: flex-start;
+}
+.shift-module .assignment-chip {
+  display: grid;
+  gap: 6px;
+  text-align: left;
+  padding: 12px 14px;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  min-width: 155px;
+}
+.assignment-chip strong {
+  color: #2563eb;
+  font-size: 16px;
+}
+.assignment-chip span {
+  font-size: 12px;
+}
+.assignment-date {
+  color: #64748b;
+}
+.unassigned-note {
+  color: #94a3b8;
+  font-size: 13px;
+  margin: 10px 0;
+}
+.day-calendar {
+  display: grid;
+  gap: 12px;
+}
+.day-employee {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  align-items: center;
+}
+.day-shifts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 16px;
+}
+.shift-module .day-assignment {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  min-width: 250px;
+  text-align: left;
+  padding: 14px;
+  background: #f8fafc;
+  border-color: #e2e8f0;
+  border-radius: 10px;
+}
+.shift-symbol {
+  display: grid;
+  place-items: center;
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 8px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  font-size: 18px;
+}
+.day-unassigned {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  color: #94a3b8;
+  font-size: 13px;
+}
+@media (max-width: 700px) {
+  .month-heading {
+    display: none;
+  }
+  .month-row,
+  .day-employee {
+    grid-template-columns: 1fr;
+  }
+  .month-row > .calendar-employee {
+    border-right: 0;
+    border-bottom: 1px solid #eef2f6;
+  }
+  .calendar-employee {
+    padding: 16px;
+  }
+  .month-shifts,
+  .day-shifts {
+    padding: 12px;
+  }
+  .shift-module .assignment-chip {
+    min-width: 140px;
+    flex: 1;
+  }
+  .day-assignment {
+    width: 100%;
+  }
+  .day-unassigned {
+    flex-wrap: wrap;
+  }
+}
+.assignment-workspace {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+.department-tree-panel {
+  max-height: min(640px, 70vh);
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  padding: 16px;
+}
+.assignment-schedule-panel {
+  min-width: 0;
+}
+.department-tree-panel h3 {
+  margin: 0 0 8px;
+}
+.tree-hint {
+  font-size: 12px;
+  color: #64748b;
+  line-height: 1.5;
+}
+.department-tree-group {
+  margin-top: 14px;
+}
+.department-tree-group summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: #334155;
+}
+.department-tree-group summary span {
+  float: right;
+  color: #64748b;
+}
+.shift-module .department-tree-group button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  margin: 4px 0;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+}
+.shift-module .department-tree-group button.selected {
+  background: #dbeafe;
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+.department-tree-group button > span {
+  flex: 1;
+  min-width: 0;
+}
+.department-tree-group button small {
+  margin-top: 3px;
+  font-size: 11px;
+}
+.tree-unavailable {
+  margin-top: 16px;
+  font-size: 12px;
+  color: #64748b;
+}
+.assignment-lock {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  color: #1e40af;
+  padding: 14px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+}
+@media (max-width: 900px) {
+  .assignment-workspace {
+    grid-template-columns: 1fr;
+  }
+  .department-tree-panel {
+    max-height: min(360px, 50vh);
+    overflow-y: auto;
   }
 }
 </style>
