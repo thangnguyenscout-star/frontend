@@ -1,0 +1,434 @@
+.annual-leave-page {
+  min-width: 0;
+}
+.annual-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a988e;
+  font-size: 11px;
+  margin-bottom: 20px;
+}
+.annual-breadcrumb a {
+  color: #6f8777;
+}
+.annual-breadcrumb i {
+  font-size: 9px;
+}
+.annual-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.annual-demo-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 15px;
+  background: #f4f8f4;
+  border: 1px solid #dce8de;
+  color: #7a8f7e;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.6;
+}
+.annual-demo-banner > i {
+  color: #5d9671;
+  font-size: 14px;
+}
+.annual-local-tag {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  white-space: nowrap;
+  color: #688570;
+  font-size: 10px;
+}
+.annual-tabs {
+  display: flex;
+  gap: 25px;
+  border-bottom: 1px solid #dce5de;
+  margin: 10px 0 20px;
+}
+.annual-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #7b8b80;
+  padding: 17px 2px 13px;
+  background: transparent;
+  border: 0;
+  border-bottom: 3px solid transparent;
+  font: inherit;
+  font-weight: 550;
+  cursor: pointer;
+}
+.annual-tabs button.active {
+  color: #197548;
+  border-bottom-color: #268653;
+}
+.annual-tabs button > i {
+  font-size: 13px;
+}
+.annual-tabs b {
+  background: #edf2ee;
+  color: #7b9282;
+  font-size: 10px;
+  min-width: 23px;
+  padding: 3px 6px;
+  border-radius: 4px;
+}
+.annual-tabs .active b {
+  background: #e1f0e5;
+  color: #388152;
+}
+.annual-toolbar-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.annual-toolbar-actions .p-button {
+  font-size: 11px;
+}
+.annual-toolbar-actions .p-button:not(.p-button-outlined) {
+  background: #20784a;
+  border-color: #20784a;
+}
+.annual-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #edf7ef;
+  color: #3e8553;
+  border: 1px solid #d7e9dc;
+  border-radius: 5px;
+  padding: 10px 12px;
+  font-size: 12px;
+}
+.annual-notice button {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+}
+.annual-formula {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  margin: 15px 0;
+  font-size: 11px;
+  color: #8b998f;
+  line-height: 1.8;
+}
+.annual-formula strong {
+  color: #5c7965;
+  font-weight: 550;
+}
+.annual-inline-note {
+  font-size: 11px;
+  color: #8b998f;
+  line-height: 1.8;
+  margin: 12px 0;
+}
+.annual-form {
+  font-size: 12px;
+  color: #415649;
+}
+.annual-form fieldset {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 17px;
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.annual-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 550;
+  margin-bottom: 14px;
+}
+.annual-form fieldset > label {
+  margin-bottom: 0;
+}
+.annual-form input,
+.annual-form select,
+.annual-form textarea {
+  font: inherit;
+  background: #fff;
+  color: #42584b;
+  padding: 9px 10px;
+  border: 1px solid #d9e3dc;
+  border-radius: 5px;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+}
+.annual-form input:focus,
+.annual-form select:focus,
+.annual-form textarea:focus {
+  outline: 2px solid #38915c40;
+  outline-offset: 1px;
+}
+.annual-form :disabled {
+  background: #f7f9f7;
+  color: #8a968e;
+  cursor: default;
+}
+.annual-form label > small {
+  color: #8e9c92;
+  font-size: 10px;
+  font-weight: 400;
+  line-height: 1.7;
+}
+.annual-full,
+.annual-form-section {
+  grid-column: 1 / -1;
+}
+.annual-form-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #6d8976;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  margin: 5px 0 -2px;
+}
+.annual-form-section::after {
+  content: '';
+  height: 1px;
+  background: #e3eae5;
+  flex: 1;
+}
+.annual-input-unit {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+.annual-input-unit input {
+  padding-right: 58px;
+}
+.annual-input-unit small {
+  position: absolute;
+  right: 10px;
+  font-size: 10px;
+  font-weight: 400;
+  color: #99a59c;
+}
+.annual-template {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 12px;
+  background: #f4f8f4;
+  border: 1px solid #e0e9e2;
+  border-radius: 5px;
+}
+.annual-template label {
+  flex: 1;
+  margin: 0;
+}
+.annual-template .p-button {
+  height: 36px;
+  font-size: 11px;
+}
+.annual-computed {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  background: #f0f7f1;
+  border: 1px solid #d8e9dc;
+  border-radius: 7px;
+  padding: 16px 20px;
+  margin: 18px 0 8px;
+  color: #76917f;
+  font-size: 11px;
+}
+.annual-computed > span {
+  flex: 1;
+}
+.annual-computed > span + span {
+  border-left: 1px solid #d5e4d9;
+  padding-left: 25px;
+}
+.annual-computed strong {
+  display: block;
+  margin-top: 8px;
+  font-size: 25px;
+  color: #37774b;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+.annual-computed small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.annual-computed i {
+  color: #93ac9b;
+}
+.annual-computed .negative strong {
+  color: #bd655a;
+}
+.annual-warning {
+  padding: 9px 12px;
+  color: #a88442;
+  background: #fff7e6;
+  border: 1px solid #f1e5c8;
+  border-radius: 5px;
+  font-size: 11px;
+}
+.annual-audit {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;
+  padding: 13px 0 0;
+  border-top: 1px solid #e4eae6;
+  color: #98a39b;
+  font-size: 10px;
+  margin-top: 16px;
+}
+.annual-detail {
+  font-size: 12px;
+  color: #4e6656;
+}
+.annual-detail-status {
+  display: inline-flex;
+  margin: 14px 0 0;
+  padding: 4px 9px;
+  border-radius: 4px;
+  font-size: 10px;
+}
+.annual-detail-status.success {
+  background: #e7f5eb;
+  color: #4b8d60;
+}
+.annual-detail-status.warning {
+  background: #fbf2df;
+  color: #a98743;
+}
+.annual-detail-status.danger {
+  background: #faeae7;
+  color: #b8675f;
+}
+.annual-detail-status.neutral {
+  background: #f0f2f1;
+  color: #85948a;
+}
+.annual-detail-note {
+  padding: 12px 14px;
+  background: #f8faf8;
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 1.8;
+  color: #85938a;
+}
+.annual-detail-note strong {
+  display: block;
+  color: #607b68;
+  font-weight: 550;
+  margin-bottom: 4px;
+}
+.annual-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 16px;
+}
+.annual-pick-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  margin: 6px 0 12px;
+}
+.annual-employee-picker {
+  border: 1px solid #dfe7e1;
+  max-height: 300px;
+  overflow: auto;
+  border-radius: 6px;
+}
+.annual-employee-picker label {
+  display: flex;
+  flex-direction: row;
+  gap: 12px;
+  padding: 10px 13px;
+  border-bottom: 1px solid #eaf0eb;
+  margin: 0;
+  align-items: center;
+  cursor: pointer;
+}
+.annual-employee-picker label:last-child {
+  border-bottom: 0;
+}
+.annual-employee-picker input {
+  width: 15px;
+  height: 15px;
+  min-height: 0;
+  accent-color: #25834e;
+}
+.annual-employee-picker strong {
+  font-size: 11px;
+  font-weight: 550;
+}
+.annual-employee-picker small {
+  display: block;
+  margin-top: 4px;
+  color: #8b9a90;
+  font-size: 10px;
+}
+.annual-employee-picker b {
+  margin-left: auto;
+  font-size: 9px;
+  color: #8ca292;
+  padding: 3px 5px;
+  background: #eef5ef;
+  font-weight: 400;
+}
+.annual-leave-page .excel-table .excel-labels th:nth-child(13),
+.annual-leave-page .excel-table tbody td:nth-child(13) {
+  border-left: 1px solid #c2d8c7;
+  background: #eff7f0;
+  font-weight: 600;
+  color: #317348;
+}
+@media (max-width: 1050px) {
+  .annual-leave-page .report-panel-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+@media (max-width: 600px) {
+  .annual-local-tag {
+    display: none;
+  }
+  .annual-tabs {
+    gap: 14px;
+  }
+  .annual-tabs button {
+    font-size: 11px;
+    gap: 6px;
+  }
+  .annual-form fieldset,
+  .annual-form-grid {
+    grid-template-columns: 1fr;
+  }
+  .annual-template {
+    flex-wrap: wrap;
+  }
+  .annual-template label {
+    flex-basis: 100%;
+  }
+  .annual-computed {
+    gap: 12px;
+    padding: 14px;
+  }
+  .annual-computed > span + span {
+    padding-left: 15px;
+  }
+}

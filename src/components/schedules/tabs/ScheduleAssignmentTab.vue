@@ -1,4 +1,9 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue';
+import ScheduleRotatingDialog from '@/components/schedules/dialogs/ScheduleRotatingDialog.vue';
+import ScheduleExchangeDialog from '@/components/schedules/dialogs/ScheduleExchangeDialog.vue';
+const exchangeAssignment = ref<Assignment>();
+import ScheduleAdministrativeDialog from '@/components/schedules/dialogs/ScheduleAdministrativeDialog.vue';
 import AssignmentCalendar, { type DayPlan } from '@/components/schedules/AssignmentCalendar.vue';
 import type {
   ScheduleDepartment,
@@ -25,11 +30,19 @@ const method = defineModel<string>('method', { required: true });
 const dayPlans = defineModel<DayPlan[]>('dayPlans', { required: true });
 const calendarMode = defineModel<'week' | 'month'>('calendarMode', { required: true });
 const calendarAnchor = defineModel<string>('calendarAnchor', { required: true });
-defineProps<{
+const emit = defineEmits<{
+  edit: [assignment: Assignment];
+  reload: [];
+  'administrative-created': [];
+  'administrative-busy': [boolean];
+}>();
+
+const props = defineProps<{
   editing?: Assignment;
   busy: boolean;
   canCreate: boolean;
   canEdit: boolean;
+  canUpdate: boolean;
   canBulk: boolean;
   treeLoading: boolean;
   treeError: string;
@@ -47,8 +60,17 @@ defineProps<{
   start: string;
   administrativeShiftId?: string;
   makePreview: () => void;
-  autoAssignRotating: () => void;
+  createAssignment?: (plan: DayPlan) => Promise<void>;
 }>();
+const rotatingDepartmentCode = computed(
+  () =>
+    props.departmentGroups
+      .flatMap((group) => group.departments)
+      .find((department) => department.name === formDepartment.value)?.code || '',
+);
+const isCSchedule = computed(() =>
+  props.manualShifts.some((shift) => shift.active && shift.workType?.trim().toUpperCase() === 'C'),
+);
 </script>
 
 <template>
@@ -56,6 +78,15 @@ defineProps<{
     <div class="toolbar">
       <h2>{{ editing ? 'Sửa phân công' : 'Tạo phân công' }}</h2>
       <div v-if="!editing" class="actions">
+        <RouterLink v-if="canUpdate" class="schedule-action-link" to="/schedules/exchange"
+          >Đổi ca</RouterLink
+        >
+        <ScheduleAdministrativeDialog
+          v-if="canCreate"
+          :disabled="busy"
+          @saved="emit('administrative-created')"
+          @busy="emit('administrative-busy', $event)"
+        />
         <button
           :class="{ chosen: !bulk }"
           @click="
@@ -193,6 +224,9 @@ defineProps<{
             "
             :shifts="manualShifts"
             :existing-assignments="data.assignments"
+            :create-assignment="createAssignment"
+            :can-edit="canUpdate && !editing"
+            @edit="exchangeAssignment = $event"
             :scheduled-dates="scheduledDates"
             :shifts-loading="shiftsLoading"
             :shifts-error="shiftsError"
@@ -206,30 +240,26 @@ defineProps<{
             :initial-date="start"
             :fixed-date="editing?.date"
             :disabled="
-              busy || !formDepartment || shiftsLoading || !!shiftsError || !manualShifts.length
+              busy ||
+              !formDepartment ||
+              (scheduleType === 'ADMINISTRATIVE' &&
+                (shiftsLoading || !!shiftsError || !administrativeShiftId))
             "
           />
-          <div v-if="scheduleType === 'ROTATING'" class="auto-schedule">
-            <h3>Tự động xếp ca xoay</h3>
-            <p>
-              Phạm vi {{ calendarMode === 'week' ? 'tuần' : 'tháng' }} đang xem · mỗi nhân viên nghỉ
-              1 ngày/tuần · ca M/E tối đa 2 người mỗi ngày · ca N nhận phần còn lại.
-              <template v-if="calendarMode === 'month'"
-                >Lịch tháng bao gồm trọn các tuần chạm vào tháng đã chọn.</template
-              >
-            </p>
-          </div>
+          <ScheduleRotatingDialog
+            v-if="!editing && canCreate"
+            :eligible="isCSchedule"
+            :department-code="rotatingDepartmentCode"
+            :anchor="calendarAnchor"
+            :week="calendarMode === 'week'"
+            :disabled="busy || shiftsLoading || !!shiftsError"
+            @busy="emit('administrative-busy', $event)"
+            @saved="
+              dayPlans = [];
+              emit('reload');
+            "
+          />
           <div class="actions schedule-actions">
-            <button
-              v-if="scheduleType === 'ROTATING'"
-              class="auto-schedule-button"
-              :disabled="
-                busy || !formDepartment || shiftsLoading || !!shiftsError || !manualShifts.length
-              "
-              @click="autoAssignRotating"
-            >
-              Tự động xếp ca
-            </button>
             <button
               class="primary"
               :disabled="
@@ -249,5 +279,32 @@ defineProps<{
         </div>
       </div>
     </template>
+    <ScheduleExchangeDialog
+      @busy="emit('administrative-busy', $event)"
+      :assignment="exchangeAssignment"
+      :department-code="
+        [...departmentGroups.flatMap((g) => g.departments), ...unclassifiedDepartments].find(
+          (d) => d.name === formDepartment,
+        )?.code || null
+      "
+      :employee-name="exchangeAssignment ? name(exchangeAssignment.employeeId) : ''"
+      @close="exchangeAssignment = undefined"
+      @confirmed="emit('reload')"
+    />
   </section>
 </template>
+
+<style scoped>
+.schedule-action-link {
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 14px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  color: #1d4ed8;
+  background: #eff6ff;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 600;
+}
+</style>

@@ -1,6 +1,6 @@
-﻿# Module xếp ca
+# Module xếp ca
 
-Entry: /schedules. Five routes: calendar (default), assign, templates, swaps, reports.
+Entry: /schedules redirects to /schedules/assign. Navigation contains two tabs: assignment and reports. Assignment links only to /schedules/exchange. Leave requests are managed in /leave. The retired /schedules/leave-calendar URL follows the existing unknown-schedule redirect back to assignment.
 
 The v2 schedule adapter is a localStorage demo behind privateApi, not an implementation of the proposed REST endpoints. The catalog is provided by src/mock/data/schedule.ts through scheduleService.load; views never define shift names. Existing mock assignments are migrated on first use. New records use separate hotel-shift-scheduling-v2 storage and do not overwrite legacy records.
 
@@ -15,3 +15,9 @@ For backend integration replace scheduleService with typed operations for catalo
 Assignment entry defaults to a month calendar for individual and bulk modes. Select employees, then click dates to configure each date's shift, note and fullTime checkbox. The checkbox defaults to true; false denotes a half shift. Legacy records with no fullTime are treated as full shifts. Preview, detail and calendar display this choice. Exact half-shift clock intervals are not inferred; overlap checks continue to use the configured shift window until the backend defines those intervals. Bulk interval/template/cycle methods remain available as alternative entry modes.
 
 The assignment calendar now uses employee rows with sticky Employee and Department columns. Department is an optional filter: blank shows all employees. Each draft is keyed by employeeId plus date; changing department/search only filters visible rows and retains drafts for preview. Click an employee/date cell to configure that employee's shift and fullTime. The separate employee picker is retained only for interval/template/cycle entry modes.
+
+The exchange calendar uses live GraphQL assignment data with month/week views, employee filters and a return link to assignment entry. Click a work shift to select its exchange partner. The schedule edit dialog only changes work shifts. The schedule module has no leave tab, leave calendar, leave creation, leave drag selection, leave history/holiday queries or leave type selector for half shifts. Leave creation and tracking belong to the independent LeaveRequestForm and leave-request.service in the leave module. Existing leave status and API leave codes remain read-only scheduling data for display, conflict checks and excluding ineligible exchange partners.
+
+PhanCongCa intervals now use thoiGianBatDau and thoiGianKetThuc (DateTime) in assignment range queries and create/update/exchange payloads. The UI retains its date and HH:mm fields, derived from the combined timestamps in UTC+07, so overnight shifts and UTC API responses keep their local dates. New writes combine the actual date and clock with +07:00 and advance the end date for overnight intervals. CaLamViec catalog clock fields and the separate leave-registration input fields remain governed by their own API contracts.
+
+GraphQL contract correction: live localhost introspection confirms UpdatePhanCongCaInput still accepts gioBatDau/gioKetThuc as Duration. Only assignment outputs and bulk row inputs use thoiGianBatDau/thoiGianKetThuc. XepCa stores datetime2 wall-clock timestamps; preserve their literal calendar date and clock even if the GraphQL scalar appends Z (see backend Docs/PhanCongCaThoiGian.md). Do not add seven hours to these assignment timestamps. Blank CHAR leave codes are normalized to null so they do not block exchange.

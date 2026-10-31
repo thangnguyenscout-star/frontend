@@ -3,14 +3,21 @@ import { publicApi } from './publicApi';
 import { tokenService } from '../auth/token.service';
 import { expireSession, sessionGeneration, sessionRevision } from '../auth/auth-session';
 
-export async function privateApi<T>(request: () => Promise<T>): Promise<T> {
+export interface PrivateApiOptions {
+  retryUnauthorized?: boolean;
+}
+
+export async function privateApi<T>(
+  request: () => Promise<T>,
+  options: PrivateApiOptions = {},
+): Promise<T> {
   const generation = sessionGeneration();
   const token = tokenService.get();
   if (!token) throw new ApiError(401);
   try {
     return await request();
   } catch (error) {
-    if (!(error instanceof ApiError) || error.status !== 401) throw error;
+    if (!(error instanceof ApiError) || error.status !== 401 || options.retryUnauthorized === false) throw error;
     if (generation !== sessionGeneration()) throw new ApiError(409);
     if (tokenService.get() === token) await publicApi.refresh();
     if (generation !== sessionGeneration()) throw new ApiError(409);

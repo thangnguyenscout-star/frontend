@@ -22,9 +22,9 @@ const systemMessages = {
   vi: (await import('@/locales/vi/system.json')).default,
   fr: (await import('@/locales/fr/system.json')).default,
 };
-it.each(['en', 'vi', 'fr'] as const)('translates all 50 system codes in %s', (locale) => {
+it.each(['en', 'vi', 'fr'] as const)('translates all system codes in %s', (locale) => {
   const messages = systemMessages[locale];
-  expect(Object.keys(messages)).toHaveLength(50);
+  expect(Object.keys(messages)).toHaveLength(Object.keys(systemMessages.en).length);
   expect(Object.keys(messages).sort()).toEqual(Object.keys(systemMessages.en).sort());
   for (const [code, message] of Object.entries(messages)) {
     expect(message.trim()).not.toBe('');

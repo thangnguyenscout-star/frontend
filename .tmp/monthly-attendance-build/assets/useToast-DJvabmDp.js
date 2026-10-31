@@ -1,0 +1,1 @@
+import{aO as i,u as c,L as g}from"./index-DX1hp8QT.js";function u(){const t=i(),{t:n,te:e}=c(),o=(s,r)=>{const a=typeof r=="string"&&e(r)?n(r):s==="error"?g(r):String(r);t.add({severity:s==="warning"?"warn":s,summary:a,life:4e3})};return{success:s=>o("success",s),info:s=>o("info",s),warning:s=>o("warning",s),error:s=>o("error",s)}}export{u};

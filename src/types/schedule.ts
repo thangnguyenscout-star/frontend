@@ -9,10 +9,14 @@ export interface Shift {
   crossDay: boolean;
   displayColor: string;
   active: boolean;
+  workType?: string;
 }
 export interface Assignment {
   id: string;
   employeeId: string;
+  employeeName?: string;
+  departmentCode?: string | null;
+  locked?: boolean;
   date: string;
   shiftId: string;
   scheduleType: ScheduleType;
@@ -27,6 +31,7 @@ export interface Assignment {
   endDate?: string;
   /** Legacy assignments default to a full shift. */
   fullTime?: boolean;
+  leaveTypeId?: string | null;
   startTime?: string;
   endTime?: string;
   crossDay?: boolean;

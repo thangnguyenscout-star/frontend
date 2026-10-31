@@ -53,6 +53,7 @@ export async function getDepartmentShifts(
     const endTime = scheduleTime(s.gioKetThuc);
     return {
       id: s.maCa,
+      workType: String(s.loaiHinhLamViec),
       code: s.kyHieuCa || s.maCa,
       name: s.tenCa,
       scheduleType:

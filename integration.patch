@@ -1,0 +1,20 @@
+diff --git a/src/views/attendance/AttendanceWorkspaceView.vue b/src/views/attendance/AttendanceWorkspaceView.vue
+index eccb3d1..6ee4953 100644
+--- a/src/views/attendance/AttendanceWorkspaceView.vue
++++ b/src/views/attendance/AttendanceWorkspaceView.vue
+@@ -3,6 +3,7 @@ import { computed } from 'vue';
+ import { useRoute } from 'vue-router';
+ import { attendanceNavigation } from '@/constants/attendance';
+ import AttendanceListView from './AttendanceListView.vue';
++import MonthlyAttendancePage from '@/modules/monthly-attendance/MonthlyAttendancePage.vue';
+ const route = useRoute();
+ const current = computed(() => attendanceNavigation.find((item) => item.path === route.path));
+ </script>
+@@ -13,6 +14,7 @@ const current = computed(() => attendanceNavigation.find((item) => item.path ===
+       ><span> / {{ current?.label }}</span>
+     </nav>
+     <template v-if="route.meta.attendancePage === 'daily'"><AttendanceListView /></template>
++    <template v-else-if="route.meta.attendancePage === 'monthly'"><MonthlyAttendancePage /></template>
+     <template v-else>
+       <h1>{{ current?.label }}</h1>
+       <div class="workspace-empty">

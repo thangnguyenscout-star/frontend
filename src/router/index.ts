@@ -1,4 +1,4 @@
-﻿import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { usePermissionStore } from '@/stores/permission.store';
 export const router = createRouter({
@@ -126,7 +126,35 @@ export const router = createRouter({
         },
         {
           path: 'attendance',
-          component: () => import('@/views/attendance/AttendanceListView.vue'),
+          redirect: '/attendance/overview',
+          meta: { module: 'attendance' },
+        },
+        {
+          path: 'attendance/overview',
+          component: () => import('@/views/attendance/AttendanceDashboardView.vue'),
+          meta: { module: 'attendance' },
+        },
+        ...['daily', 'monthly', 'adjustments', 'reports'].map((page) => ({
+          path: 'attendance/' + page,
+          component: () => import('@/views/attendance/AttendanceWorkspaceView.vue'),
+          meta: { module: 'attendance', attendancePage: page },
+        })),
+        ...[{ suffix: '', page: 'logs', alias: '/cham-cong/dong-bo' }].map((item) => ({
+          path: 'attendance/raw-data' + item.suffix,
+          alias: item.alias,
+          component: () => import('@/modules/attendance-sync/AttendanceSyncPage.vue'),
+          meta: { module: 'attendance', syncPage: item.page },
+        })),
+        {
+          path: 'attendance/periods',
+          alias: '/cham-cong/ky-cham-cong',
+          component: () => import('@/modules/attendance-periods/PeriodListPage.vue'),
+          meta: { module: 'attendance' },
+        },
+        {
+          path: 'attendance/periods/:id',
+          alias: '/cham-cong/ky-cham-cong/:id',
+          component: () => import('@/modules/attendance-periods/PeriodDetailPage.vue'),
           meta: { module: 'attendance' },
         },
         {
@@ -136,10 +164,10 @@ export const router = createRouter({
         },
         {
           path: 'schedules',
-          component: () => import('@/views/schedules/ScheduleListView.vue'),
+          redirect: '/schedules/assign',
           meta: { module: 'schedules' },
         },
-        ...['assign', 'templates', 'swaps', 'reports'].map((page) => ({
+        ...['assign', 'reports', 'exchange'].map((page) => ({
           path: 'schedules/' + page,
           component: () => import('@/views/schedules/ScheduleListView.vue'),
           meta: { module: 'schedules', schedulePage: page },
@@ -148,6 +176,11 @@ export const router = createRouter({
         {
           path: 'leave',
           component: () => import('@/views/leave/LeaveListView.vue'),
+          meta: { module: 'leave' },
+        },
+        {
+          path: 'leave/annual',
+          component: () => import('@/modules/annual-leave/AnnualLeavePage.vue'),
           meta: { module: 'leave' },
         },
         {

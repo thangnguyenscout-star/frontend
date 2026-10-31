@@ -1,4 +1,6 @@
 <script setup lang="ts">
-import ModuleListView from '@/views/shared/ModuleListView.vue';
+import LeaveRequestsPage from '@/modules/leave-requests/LeaveRequestsPage.vue';
 </script>
-<template><ModuleListView module="leave" /></template>
+<template>
+  <LeaveRequestsPage />
+</template>

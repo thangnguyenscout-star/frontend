@@ -1,13 +1,22 @@
 import { useToast as primeToast } from 'primevue/usetoast';
 import { useI18n } from 'vue-i18n';
+import { getApiErrorMessage } from '@/utils/error-message';
 export function useToast() {
   const toast = primeToast();
-  const { t } = useI18n();
-  return Object.fromEntries(
-    ['success', 'info', 'warning', 'error'].map((kind) => [
-      kind,
-      (key: string) =>
-        toast.add({ severity: kind === 'warning' ? 'warn' : kind, summary: t(key), life: 4000 }),
-    ]),
-  ) as Record<'success' | 'info' | 'warning' | 'error', (key: string) => void>;
+  const { t, te } = useI18n();
+  const show = (kind: 'success' | 'info' | 'warning' | 'error', value: unknown) => {
+    const summary =
+      typeof value === 'string' && te(value)
+        ? t(value)
+        : kind === 'error'
+          ? getApiErrorMessage(value)
+          : String(value);
+    toast.add({ severity: kind === 'warning' ? 'warn' : kind, summary, life: 4000 });
+  };
+  return {
+    success: (key: string) => show('success', key),
+    info: (key: string) => show('info', key),
+    warning: (key: string) => show('warning', key),
+    error: (error: unknown) => show('error', error),
+  };
 }

@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { getApiErrorMessage } from '@/utils/error-message';
 import {
   createBulkAssignments,
   mapBulkAssignments,
 } from '@/services/modules/schedule-bulk.service';
-import { computed, onMounted, ref, watch, onBeforeUnmount } from 'vue';
+import { computed, onMounted, reactive, ref, watch, onBeforeUnmount } from 'vue';
 import { useRoute, useRouter, onBeforeRouteLeave, onBeforeRouteUpdate } from 'vue-router';
+import ScheduleActionCalendar from '@/components/schedules/ScheduleActionCalendar.vue';
+import ScheduleEditDialog from '@/components/schedules/dialogs/ScheduleEditDialog.vue';
 import { type DayPlan } from '@/components/schedules/AssignmentCalendar.vue';
 import ScheduleAssignmentDialogs from '@/components/schedules/dialogs/ScheduleAssignmentDialogs.vue';
 import ScheduleDrillDialog from '@/components/schedules/dialogs/ScheduleDrillDialog.vue';
@@ -16,8 +19,10 @@ import ScheduleModuleNavigation from '@/components/schedules/tabs/ScheduleModule
 import ScheduleReportsTab from '@/components/schedules/tabs/ScheduleReportsTab.vue';
 import ScheduleSwapsTab from '@/components/schedules/tabs/ScheduleSwapsTab.vue';
 import ScheduleTemplatesTab from '@/components/schedules/tabs/ScheduleTemplatesTab.vue';
+import AppDialog from '@/components/common/AppDialog.vue';
 import { employeeService } from '@/services/modules/employee.service';
 import {
+  createScheduleAssignment,
   getEmployeesMissingSchedule,
   getScheduleAssignments,
   type UnscheduledScheduleEmployee,
@@ -29,7 +34,8 @@ import { useToast } from '@/composables/useToast';
 import { scheduleService, conflicts } from '@/services/modules/schedule.service';
 import { fillUnassignedPlans } from '@/utils/schedule-fill';
 import { scheduleRange } from '@/utils/schedule-range';
-import { isPastScheduleDate } from '@/utils/schedule-date';
+import { scheduleDuration } from '@/utils/schedule-datetime';
+import { isPastScheduleDate, scheduleDate } from '@/utils/schedule-date';
 import {
   getScheduleDepartments,
   getScheduleDepartmentGroups,
@@ -38,7 +44,7 @@ import {
   getDepartmentShifts,
 } from '@/services/modules/schedule-shift.service';
 import type { Shift } from '@/types/schedule';
-import { buildRotatingSchedule } from '@/utils/schedule-auto';
+
 import type {
   Assignment,
   ScheduleData,
@@ -68,7 +74,7 @@ const staff = {
         status: String(item.trangThaiNhanVien ?? ''),
       }));
     } catch (e) {
-      staff.error.value = e instanceof Error ? e.message : String(e);
+      staff.error.value = getApiErrorMessage(e);
     } finally {
       staff.loading.value = false;
     }
@@ -85,7 +91,7 @@ const departmentRecords = {
     try {
       departmentRecords.all.value = await getScheduleDepartments();
     } catch (e) {
-      departmentRecords.error.value = e instanceof Error ? e.message : String(e);
+      departmentRecords.error.value = getApiErrorMessage(e);
     } finally {
       departmentRecords.loading.value = false;
     }
@@ -107,7 +113,7 @@ async function loadDepartmentTree() {
     departmentGroups.value = result.groups;
     unclassifiedDepartments.value = result.unavailable;
   } catch (e) {
-    if (request === treeRequest) treeError.value = e instanceof Error ? e.message : String(e);
+    if (request === treeRequest) treeError.value = getApiErrorMessage(e);
   } finally {
     if (request === treeRequest) treeLoading.value = false;
   }
@@ -131,14 +137,13 @@ const loading = ref(false),
   error = ref(''),
   dirty = ref(false);
 const menu = [
-  { key: 'calendar', label: 'Lịch phân công' },
   { key: 'assign', label: 'Phân công ca' },
-  { key: 'templates', label: 'Mẫu lịch' },
-  { key: 'swaps', label: 'Đổi ca' },
   { key: 'reports', label: 'Báo cáo lịch làm việc' },
 ];
-const page = computed(() => String(route.meta.schedulePage || 'calendar'));
-const title = computed(() => menu.find((m) => m.key === page.value)?.label);
+const page = computed(() => String(route.meta.schedulePage || 'assign'));
+const title = computed(() =>
+  page.value === 'exchange' ? 'Đổi ca' : menu.find((m) => m.key === page.value)?.label,
+);
 function dateKey(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -173,6 +178,47 @@ const department = ref(''),
   shiftFilter = ref(''),
   status = ref(''),
   search = ref('');
+const filterDialogOpen = ref(false);
+const filterDraft = reactive({ employee: '', type: '', shiftFilter: '', status: '', search: '' });
+const activeFilterCount = computed(
+  () =>
+    [
+      department.value,
+      employee.value,
+      type.value,
+      shiftFilter.value,
+      status.value,
+      search.value,
+    ].filter((value) => value.trim()).length,
+);
+function openFilterDialog() {
+  Object.assign(filterDraft, {
+    employee: employee.value,
+    type: type.value,
+    shiftFilter: shiftFilter.value,
+    status: status.value,
+    search: search.value,
+  });
+  filterDialogOpen.value = true;
+}
+function applyFilterDialog() {
+  employee.value = filterDraft.employee;
+  type.value = filterDraft.type;
+  shiftFilter.value = filterDraft.shiftFilter;
+  status.value = filterDraft.status;
+  search.value = filterDraft.search.trim();
+  filterDialogOpen.value = false;
+}
+function clearScheduleFilters() {
+  department.value = '';
+  employee.value = '';
+  type.value = '';
+  shiftFilter.value = '';
+  status.value = '';
+  search.value = '';
+  Object.assign(filterDraft, { employee: '', type: '', shiftFilter: '', status: '', search: '' });
+  filterDialogOpen.value = false;
+}
 const departments = computed(() =>
   departmentRecords.all.value.map((department) => department.name),
 );
@@ -241,6 +287,11 @@ const pending = (a?: Assignment) =>
 let calendarRequest = 0;
 async function load() {
   const request = ++calendarRequest;
+  if (page.value === 'exchange') {
+    loading.value = false;
+    error.value = '';
+    return;
+  }
   loading.value = true;
   error.value = '';
   try {
@@ -252,16 +303,19 @@ async function load() {
       if (request !== calendarRequest) return;
       data.value = { ...data.value, ...calendar };
     } else if (page.value === 'assign') {
-      const stored = await scheduleService.load();
+      const calendar = await getScheduleAssignments(
+        calendarRange.value.start,
+        calendarRange.value.end,
+      );
       if (request !== calendarRequest) return;
-      data.value = stored;
+      data.value = { ...data.value, ...calendar };
     } else {
       const stored = await scheduleService.load();
       if (request !== calendarRequest) return;
       data.value = stored;
     }
   } catch (e) {
-    if (request === calendarRequest) error.value = e instanceof Error ? e.message : String(e);
+    if (request === calendarRequest) error.value = getApiErrorMessage(e);
   } finally {
     if (request === calendarRequest) loading.value = false;
   }
@@ -277,8 +331,7 @@ async function loadScheduleEmployees() {
     if (request === scheduleEmployeeRequest && page.value === 'assign')
       scheduleEmployees.value = employees;
   } catch (e) {
-    if (request === scheduleEmployeeRequest)
-      error.value = e instanceof Error ? e.message : String(e);
+    if (request === scheduleEmployeeRequest) error.value = getApiErrorMessage(e);
   }
 }
 onMounted(loadScheduleEmployees);
@@ -298,7 +351,7 @@ async function run(job: () => Promise<ScheduleData>) {
     toast.success('success');
     return true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    error.value = getApiErrorMessage(e);
     return false;
   } finally {
     busy.value = false;
@@ -315,16 +368,21 @@ const unload = (e: BeforeUnloadEvent) => {
 };
 window.addEventListener('beforeunload', unload);
 onBeforeUnmount(() => window.removeEventListener('beforeunload', unload));
+const updateTarget = ref<Assignment>();
+function openUpdate(assignment: Assignment) {
+  if (busy.value || !permission.can('schedules', 'edit')) return;
+  updateTarget.value = { ...assignment, scheduleType: scheduleType.value };
+}
+async function updatedAssignment() {
+  updateTarget.value = undefined;
+  await refreshAssignmentCalendar();
+}
 const detail = ref<Assignment>(),
   detailOpen = ref(false),
   historyOpen = ref(false);
 function open(id: string, date: string) {
-  const a = cell(id, date);
-  if (a) {
-    detail.value = a;
-    detailOpen.value = true;
-    historyOpen.value = false;
-  } else if (permission.can('schedules', 'create'))
+  if (cell(id, date)) return;
+  if (permission.can('schedules', 'create'))
     router.push({ path: '/schedules/assign', query: { employee: id, date } });
 }
 const bulk = ref(false),
@@ -365,7 +423,7 @@ async function loadManualShifts() {
     ]);
     if (request !== shiftRequest) return;
     data.value.assignments = calendar.assignments;
-    manualShifts.value = shifts;
+    manualShifts.value = shifts.filter((shift) => shift.workType !== '0');
     if (!editing.value) scheduleType.value = shifts[0]?.scheduleType || 'ROTATING';
     data.value.shifts = [
       ...data.value.shifts.filter((s) => !shifts.some((item) => item.id === s.id)),
@@ -373,10 +431,53 @@ async function loadManualShifts() {
     ];
     if (!editing.value && scheduleType.value === 'ADMINISTRATIVE') fillAdministrativePlans();
   } catch (e) {
-    if (request === shiftRequest) shiftsError.value = e instanceof Error ? e.message : String(e);
+    if (request === shiftRequest) shiftsError.value = getApiErrorMessage(e);
   } finally {
     if (request === shiftRequest) shiftsLoading.value = false;
   }
+}
+async function createCalendarAssignment(plan: DayPlan) {
+  if (busy.value || !permission.can('schedules', 'create'))
+    throw new Error('Bạn không có quyền tạo phân công ca hoặc hệ thống đang bận.');
+  if (isPastScheduleDate(plan.date)) throw new Error('Không được phân công ngày trong quá khứ.');
+  const departmentCode = departmentRecords.all.value.find(
+    (d) => d.name === formDepartment.value,
+  )?.code;
+  const employee = scheduleEmployees.value.find((e) => e.maNhanVien === plan.employeeId);
+  const staffMember = staff.all.value.find((e) => e.code === plan.employeeId);
+  const shift = manualShifts.value.find(
+    (s) => s.id === plan.shiftId && s.active && s.workType !== '0',
+  );
+  if (!departmentCode || !departmentRoster.value.some((e) => e.code === plan.employeeId) || !shift)
+    throw new Error('Nhân viên, bộ phận hoặc ca làm việc không hợp lệ.');
+  if (data.value.assignments.some((a) => a.employeeId === plan.employeeId && a.date === plan.date))
+    throw new Error('Nhân viên đã có phân công trong ngày này. Vui lòng tải lại lịch.');
+  const input = {
+    maBoPhan: departmentCode,
+    maChucVu:
+      employee?.maChucVu || (staffMember?.positionCode ? String(staffMember.positionCode) : null),
+    maNhanVien: plan.employeeId,
+    ngayLamViec: plan.date + 'T00:00:00+07:00',
+    maCa: plan.shiftId,
+    gioBatDau: plan.startTime ? scheduleDuration(plan.startTime) : null,
+    gioKetThuc: plan.endTime ? scheduleDuration(plan.endTime) : null,
+    ghiChu: plan.note.trim() || null,
+  };
+  busy.value = true;
+  try {
+    const result = await createScheduleAssignment(input);
+    dayPlans.value = dayPlans.value.filter(
+      (p) => p.employeeId !== plan.employeeId || p.date !== plan.date,
+    );
+    toast.success(result.message || 'Tạo phân công ca thành công.');
+    await refreshAssignmentCalendar();
+  } finally {
+    busy.value = false;
+  }
+}
+async function refreshAssignmentCalendar() {
+  await loadManualShifts();
+  await loadScheduleEmployees();
 }
 watch(formDepartment, () => {
   ++shiftRequest;
@@ -396,7 +497,7 @@ watch(
 const departmentRoster = computed(() => {
   const departmentCode =
     departmentRecords.all.value.find((item) => item.name === formDepartment.value)?.code || '';
-  return scheduleEmployees.value
+  const roster = scheduleEmployees.value
     .filter(
       (item) =>
         !formDepartment.value ||
@@ -408,6 +509,17 @@ const departmentRoster = computed(() => {
       name: item.hoTen,
       department: item.tenBoPhan || '',
     }));
+  for (const employee of staff.all.value.filter(
+    (item) => item.department === formDepartment.value,
+  )) {
+    if (!roster.some((item) => item.code === employee.code))
+      roster.push({
+        code: employee.code,
+        name: employee.name,
+        department: String(employee.department || ''),
+      });
+  }
+  return roster;
 });
 const eligible = computed(() => {
   const roster = editing.value
@@ -573,6 +685,10 @@ watch(
 );
 onMounted(initialize);
 function makePreview() {
+  if (editing.value) {
+    openUpdate(editing.value);
+    return;
+  }
   error.value = '';
   if (
     method.value === 'calendar'
@@ -698,31 +814,6 @@ function openPreview(rows: Assignment[]) {
   });
   previewOpen.value = true;
 }
-function autoAssignRotating() {
-  error.value = '';
-  const roster = staff.all.value.filter((item) => item.department === formDepartment.value);
-  if (!formDepartment.value || !roster.length) {
-    error.value = 'Chọn bộ phận có nhân viên trước khi tự động xếp ca.';
-    return;
-  }
-  if (roster.length > 1 && !permission.can('schedules', 'bulk')) {
-    error.value = 'Bạn không có quyền phân công hàng loạt cho bộ phận này.';
-    return;
-  }
-  try {
-    preview.value = buildRotatingSchedule(
-      roster.map((item) => item.code),
-      calendarRange.value.start,
-      calendarRange.value.end,
-      data.value.shifts,
-    );
-    preview.value = preview.value.filter((a) => !isPastScheduleDate(a.date));
-    if (!preview.value.length) throw new Error('Không có ngày hợp lệ để phân công.');
-    openPreview(preview.value);
-  } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
-  }
-}
 async function saveAssignments() {
   if (busy.value || issues.value.length || !preview.value.length) return;
   if (!permission.can('schedules', preview.value.length > 1 ? 'bulk' : 'create')) {
@@ -751,23 +842,27 @@ async function saveAssignments() {
       error.value =
         `Đã lưu ${result.thanhCong}/${result.tongSo}. ${result.thatBai} phân công thất bại. ` +
         result.loi
-          .map((e) => `${e.maNhanVien} · ${e.ngayLamViec.slice(0, 10)}: ${e.message}`)
+          .map((e) => `${e.maNhanVien} · ${scheduleDate(e.ngayLamViec)}: ${getApiErrorMessage(e)}`)
           .join('\n');
+      toast.error(error.value);
       const failed = new Set(
-        result.loi.map((e) => `${e.maNhanVien}:${e.ngayLamViec.slice(0, 10)}`),
+        result.loi.map((e) => `${e.maNhanVien}:${scheduleDate(e.ngayLamViec)}`),
       );
       preview.value = preview.value.filter((a) => failed.has(`${a.employeeId}:${a.date}`));
       dayPlans.value = dayPlans.value.filter((a) => failed.has(`${a.employeeId}:${a.date}`));
+      await refreshAssignmentCalendar();
       return;
     }
     dayPlans.value = [];
     dirty.value = false;
     previewOpen.value = false;
     toast.success(`Đã lưu ${result.thanhCong} phân công ca.`);
+    await refreshAssignmentCalendar();
     await router.push('/schedules');
     await load();
   } catch (e) {
-    error.value = e instanceof Error ? e.message : String(e);
+    toast.error(e);
+    error.value = getApiErrorMessage(e);
   } finally {
     busy.value = false;
   }
@@ -971,11 +1066,12 @@ async function decideSwap(approve: boolean) {
         v-if="page === 'calendar' && permission.can('schedules', 'create')"
         class="primary"
         to="/schedules/assign"
-        >+ Phân công ca</RouterLink
       >
+        + Phân công ca
+      </RouterLink>
     </div>
-    <ScheduleModuleNavigation :items="menu" :active-key="page" />
-    <p v-if="page !== 'calendar'" class="demo">
+    <ScheduleModuleNavigation :items="menu" :active-key="page === 'exchange' ? 'assign' : page" />
+    <p v-if="page === 'templates' || page === 'swaps'" class="demo">
       ⓘ Chế độ demo · Dữ liệu lưu trên trình duyệt. API xếp ca thật chưa được cung cấp.
     </p>
     <p
@@ -998,7 +1094,7 @@ async function decideSwap(approve: boolean) {
       Đang tải dữ liệu xếp ca…
     </p>
     <template v-else>
-      <section v-if="page === 'calendar' || page === 'reports'" class="panel filters">
+      <section v-if="page === 'reports'" class="panel filters">
         <label
           >Bộ phận<select v-model="department">
             <option value="">Tất cả bộ phận</option>
@@ -1026,52 +1122,179 @@ async function decideSwap(approve: boolean) {
             <option v-for="s in data.shifts" :key="s.id" :value="s.id">{{ s.name }}</option>
           </select></label
         >
-        <label v-if="page === 'calendar'"
-          >Trạng thái<select v-model="status">
-            <option value="">Tất cả</option>
-            <option value="SCHEDULED">Đã xếp</option>
-            <option value="UNASSIGNED">Chưa xếp</option>
-            <option value="OFF">Nghỉ</option>
-            <option value="LEAVE">Nghỉ phép</option>
-          </select></label
-        >
         <label>Tìm kiếm<input v-model="search" placeholder="Mã NV hoặc họ tên" /></label>
       </section>
-      <ScheduleCalendarTab
+      <AppDialog
         v-if="page === 'calendar'"
-        v-model:view="view"
-        v-model:anchor="anchor"
-        :employees="
-          staff.all.value.map((item) => ({
-            code: item.code,
-            name: item.name,
-            department: String(item.department || ''),
-          }))
-        "
-        :visible-employees="
-          visibleEmployees.map((item) => ({
-            code: item.code,
-            name: item.name,
-            department: String(item.department || ''),
-          }))
-        "
-        :dates="dates"
-        :today="today"
-        :shifts="data.shifts"
-        :can-create="permission.can('schedules', 'create')"
-        :employee-assignments="employeeAssignments"
-        :cell="cell"
-        :matches="matches"
-        :fmt="fmt"
-        :name="name"
-        :shift-name="shiftName"
-        :symbol="symbol"
-        :label="label"
-        :pending="pending"
-        @move="move"
-        @open="open"
+        v-model:visible="filterDialogOpen"
+        modal
+        header="Bộ lọc lịch phân công"
+        :style="{ width: 'min(680px, 94vw)' }"
+        class="schedule-filter-dialog"
+      >
+        <div class="schedule-filter-fields">
+          <label
+            >Nhân viên<select v-model="filterDraft.employee">
+              <option value="">Tất cả nhân viên</option>
+              <option v-for="item in staff.all.value" :key="item.code" :value="item.code">
+                {{ name(item.code) }}
+              </option>
+            </select></label
+          >
+          <label
+            >Loại lịch<select v-model="filterDraft.type">
+              <option value="">Tất cả loại lịch</option>
+              <option value="ADMINISTRATIVE">Hành chính</option>
+              <option value="ROTATING">Xoay ca</option>
+            </select></label
+          >
+          <label
+            >Ca<select v-model="filterDraft.shiftFilter">
+              <option value="">Tất cả ca</option>
+              <option v-for="shift in data.shifts" :key="shift.id" :value="shift.id">
+                {{ shift.name }}
+              </option>
+            </select></label
+          >
+          <label
+            >Trạng thái<select v-model="filterDraft.status">
+              <option value="">Tất cả trạng thái</option>
+              <option value="SCHEDULED">Đã xếp</option>
+              <option value="UNASSIGNED">Chưa xếp</option>
+              <option value="OFF">Nghỉ</option>
+              <option value="LEAVE">Nghỉ phép</option>
+            </select></label
+          >
+          <label class="schedule-filter-search"
+            >Tìm kiếm<input
+              v-model="filterDraft.search"
+              placeholder="Mã NV hoặc họ tên"
+              type="search"
+          /></label>
+        </div>
+        <template #footer>
+          <button type="button" class="schedule-filter-clear" @click="clearScheduleFilters">
+            <i class="pi pi-filter-slash" aria-hidden="true" /> Xóa bộ lọc
+          </button>
+          <div class="schedule-filter-actions">
+            <button type="button" @click="filterDialogOpen = false">Hủy</button>
+            <button type="button" class="schedule-filter-apply" @click="applyFilterDialog">
+              Áp dụng
+            </button>
+          </div>
+        </template>
+      </AppDialog>
+      <div v-if="page === 'calendar'" class="schedule-calendar-layout">
+        <aside class="department-filter-tree" aria-labelledby="department-filter-title">
+          <h2 id="department-filter-title">Bộ phận</h2>
+          <p v-if="treeLoading" role="status">Đang tải cây bộ phận…</p>
+          <p v-if="treeError" role="alert" class="error">
+            {{ treeError }}
+            <button type="button" @click="loadDepartmentTree">Tải lại</button>
+          </p>
+          <button
+            type="button"
+            class="department-filter-all"
+            :class="{ selected: !department }"
+            :aria-pressed="!department"
+            @click="department = ''"
+          >
+            Tất cả bộ phận
+          </button>
+          <nav aria-label="Cây bộ phận theo loại lịch">
+            <details v-for="group in departmentGroups" :key="group.type" open>
+              <summary>
+                {{ group.label }} <small>{{ group.departments.length }}</small>
+              </summary>
+              <button
+                v-for="item in group.departments"
+                :key="item.code"
+                type="button"
+                :class="{ selected: department === item.name }"
+                :aria-pressed="department === item.name"
+                @click="department = item.name"
+              >
+                <span>{{ item.name }}</span
+                ><small>{{ item.code }}</small>
+              </button>
+            </details>
+            <details v-if="unclassifiedDepartments.length" open>
+              <summary>
+                Chưa phân loại <small>{{ unclassifiedDepartments.length }}</small>
+              </summary>
+              <button
+                v-for="item in unclassifiedDepartments"
+                :key="item.code"
+                type="button"
+                :class="{ selected: department === item.name }"
+                :aria-pressed="department === item.name"
+                @click="department = item.name"
+              >
+                <span>{{ item.name }}</span
+                ><small>{{ item.code }}</small>
+              </button>
+            </details>
+          </nav>
+        </aside>
+        <div class="schedule-calendar-pane">
+          <div class="schedule-filter-toolbar">
+            <button
+              type="button"
+              class="schedule-filter-launcher"
+              :aria-label="`Mở bộ lọc lịch${activeFilterCount ? `, ${activeFilterCount} mục đang áp dụng` : ''}`"
+              @click="openFilterDialog"
+            >
+              <i class="pi pi-filter" aria-hidden="true" />
+              <span>Bộ lọc</span>
+              <span v-if="activeFilterCount" class="schedule-filter-count">
+                {{ activeFilterCount }}
+              </span>
+            </button>
+          </div>
+          <ScheduleCalendarTab
+            v-model:view="view"
+            v-model:anchor="anchor"
+            :employees="
+              staff.all.value.map((item) => ({
+                code: item.code,
+                name: item.name,
+                department: String(item.department || ''),
+              }))
+            "
+            :visible-employees="
+              visibleEmployees.map((item) => ({
+                code: item.code,
+                name: item.name,
+                department: String(item.department || ''),
+              }))
+            "
+            :group-by-department="!department"
+            :dates="dates"
+            :today="today"
+            :shifts="data.shifts"
+            :can-create="permission.can('schedules', 'create')"
+            :employee-assignments="employeeAssignments"
+            :cell="cell"
+            :matches="matches"
+            :fmt="fmt"
+            :name="name"
+            :shift-name="shiftName"
+            :symbol="symbol"
+            :label="label"
+            :pending="pending"
+            @move="move"
+            @open="open"
+          />
+        </div>
+      </div>
+      <ScheduleActionCalendar
+        v-if="page === 'exchange'"
+        :employees="staff.all.value"
+        :departments="departmentRecords.all.value"
+        :can-edit="permission.can('schedules', 'edit')"
       />
       <ScheduleAssignmentTab
+        @reload="refreshAssignmentCalendar"
         v-if="page === 'assign'"
         v-model:bulk="bulk"
         v-model:selected="selected"
@@ -1086,6 +1309,7 @@ async function decideSwap(approve: boolean) {
         :busy="busy"
         :can-create="permission.can('schedules', 'create')"
         :can-edit="permission.can('schedules', editing ? 'edit' : bulk ? 'bulk' : 'create')"
+        :can-update="permission.can('schedules', 'edit')"
         :can-bulk="permission.can('schedules', 'bulk')"
         :tree-loading="treeLoading"
         :tree-error="treeError"
@@ -1105,7 +1329,10 @@ async function decideSwap(approve: boolean) {
           data.shifts.find((shift) => shift.active && shift.code === 'D')?.id
         "
         :make-preview="makePreview"
-        :auto-assign-rotating="autoAssignRotating"
+        :create-assignment="!editing ? createCalendarAssignment : undefined"
+        @edit="openUpdate"
+        @administrative-busy="busy = $event"
+        @administrative-created="refreshAssignmentCalendar"
         @input="dirty = true"
         @change="dirty = true"
       />
@@ -1150,16 +1377,17 @@ async function decideSwap(approve: boolean) {
           swapDetailOpen = true;
         "
       />
-      <ScheduleReportsTab
-        v-if="page === 'reports'"
-        v-model:report-mode="reportMode"
-        v-model:report-start="reportStart"
-        v-model:report-end="reportEnd"
-        :reports="reports"
-        :assignment-count="reportAssignments.length"
-        @drill="drillReport"
-      />
+      <ScheduleReportsTab v-if="page === 'reports'" />
     </template>
+    <ScheduleEditDialog
+      :assignment="updateTarget"
+      :department-code="
+        departmentRecords.all.value.find((item) => item.name === formDepartment)?.code || ''
+      "
+      :employee-name="updateTarget ? name(updateTarget.employeeId) : ''"
+      @close="updateTarget = undefined"
+      @saved="updatedAssignment"
+    />
     <ScheduleAssignmentDialogs
       v-model:detail="detail"
       v-model:detail-open="detailOpen"
@@ -1294,6 +1522,158 @@ async function decideSwap(approve: boolean) {
   padding: 16px;
   margin: 16px 0;
 }
+.schedule-calendar-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px;
+  margin: 16px 0;
+}
+.schedule-calendar-pane {
+  width: 100%;
+  min-width: 0;
+  max-width: 1440px;
+  margin-inline: auto;
+}
+.schedule-filter-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: 0 0 8px;
+}
+.shift-module .schedule-filter-launcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 12px;
+}
+.schedule-filter-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 11px;
+  font-weight: 700;
+}
+.schedule-filter-dialog .schedule-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 4px 0 12px;
+}
+.schedule-filter-dialog .schedule-filter-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 600;
+}
+.schedule-filter-dialog .schedule-filter-fields select,
+.schedule-filter-dialog .schedule-filter-fields input {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #1e293b;
+  font: inherit;
+}
+.schedule-filter-dialog .schedule-filter-search {
+  grid-column: 1 / -1;
+}
+.schedule-filter-dialog .p-dialog-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.schedule-filter-dialog .schedule-filter-actions {
+  display: flex;
+  gap: 8px;
+}
+.schedule-filter-dialog .p-dialog-footer button {
+  min-height: 38px;
+  padding: 8px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #fff;
+  color: #334155;
+  font: inherit;
+  cursor: pointer;
+}
+.schedule-filter-dialog .p-dialog-footer .schedule-filter-clear {
+  border-color: transparent;
+  color: #475569;
+}
+.schedule-filter-dialog .p-dialog-footer .schedule-filter-apply {
+  border-color: #2563eb;
+  background: #2563eb;
+  color: #fff;
+}
+.department-filter-tree {
+  position: sticky;
+  top: 16px;
+  align-self: start;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #dbe3ee;
+  border-radius: 8px;
+  background: #fff;
+}
+.department-filter-tree h2 {
+  margin: 0;
+  font-size: 13px;
+}
+.department-filter-tree p {
+  margin: 0;
+}
+.department-filter-tree nav {
+  display: block;
+}
+.department-filter-tree details {
+  min-width: 0;
+  margin-top: 8px;
+}
+.department-filter-tree summary {
+  padding: 6px 0;
+  color: #334155;
+  font-weight: 600;
+  cursor: pointer;
+}
+.department-filter-tree summary small {
+  float: right;
+}
+.shift-module .department-filter-tree button {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  width: 100%;
+  margin-top: 3px;
+  padding: 6px 8px;
+  border-color: transparent;
+  background: transparent;
+  border-radius: 5px;
+  text-align: left;
+  font-size: 12px;
+}
+.shift-module .department-filter-tree button.selected {
+  color: #1d4ed8;
+  border-color: #93c5fd;
+  background: #dbeafe;
+}
+.shift-module .department-filter-tree .department-filter-all {
+  justify-content: flex-start;
+  width: 100%;
+  margin: 0;
+  border-color: #dbe3ee;
+}
 .shift-module label,
 .schedule-dialog label,
 .schedule-drawer label {
@@ -1377,40 +1757,90 @@ async function decideSwap(approve: boolean) {
   width: 9px;
   height: 9px;
   border-radius: 50%;
+  background: var(--shift-color, #94a3b8);
+}
+.shift-module .legend .shift-legend-item {
+  color: var(--shift-color, #64748b);
+  font-weight: 600;
+}
+.shift-module .schedule-calendar-pane .toolbar {
+  justify-content: center;
+}
+.shift-module .schedule-calendar-pane .toolbar > .actions {
+  justify-content: center;
+}
+.shift-module .schedule-calendar-pane .legend {
+  justify-content: center;
+  gap: 10px 18px;
+  padding: 12px;
+  border-block: 1px solid #e2e8f0;
 }
 .shift-module .grid-wrap {
   overflow: auto;
   max-height: 65vh;
 }
-.shift-module .grid {
+.shift-module details.department-calendar-group {
+  margin-bottom: 12px;
+  overflow: hidden;
+  border: 1px solid #dbe3ee;
+  border-radius: 7px;
+  background: #fff;
+}
+.shift-module .department-calendar-group > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  color: #334155;
+  cursor: pointer;
+  font-weight: 600;
+}
+.shift-module .department-calendar-group > summary small {
+  margin: 0;
+  white-space: nowrap;
+}
+.shift-module .department-calendar-group > .panel {
+  border: 0;
+  border-radius: 0;
+}
+.shift-module .schedule-grid {
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   width: 100%;
   font-size: 13px;
 }
-.shift-module .grid th,
-.shift-module .grid td {
-  padding: 12px;
+.shift-module .schedule-grid th,
+.shift-module .schedule-grid td {
+  padding: 9px 8px;
   border-bottom: 1px solid #e2e8f0;
   border-right: 1px solid #eef2f6;
-  min-width: 140px;
+  min-width: 0;
+  vertical-align: middle;
+  text-align: center;
   background: white;
 }
-.shift-module .grid thead th {
+.shift-module .schedule-grid thead th {
   position: sticky;
   top: 0;
   z-index: 2;
   background: #f8fafc;
   text-align: center;
 }
-.shift-module .grid tr > th:first-child {
+.shift-module .schedule-grid tr > th:first-child {
   position: sticky;
   left: 0;
-  min-width: 240px;
+  width: 240px;
+  overflow-wrap: anywhere;
   text-align: left;
   z-index: 1;
 }
-.shift-module .grid thead th:first-child {
+.shift-module .schedule-grid .employee-col {
+  width: 240px;
+}
+.shift-module .schedule-grid thead th:first-child {
   z-index: 3;
 }
 .shift-module small,
@@ -1420,22 +1850,87 @@ async function decideSwap(approve: boolean) {
   margin-top: 6px;
   font-weight: 400;
 }
-.shift-module .grid .weekend {
+.shift-module .schedule-grid .weekend {
   background: #f8fafc;
 }
-.shift-module .grid .today {
+.shift-module .schedule-grid .today {
   background: #eff6ff;
 }
 .shift-module .shift-cell {
   border-left: 3px solid var(--shift-color);
   width: 100%;
-  min-height: 76px;
-  text-align: left;
-  padding: 10px 8px;
+  min-height: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  text-align: center;
+  padding: 6px;
+  background: var(--shift-bg, #fff);
+  border-color: var(--shift-border, #dbe3ee);
+  border-left-color: var(--shift-color, #94a3b8);
 }
 .shift-module .shift-cell strong {
   color: var(--shift-color);
   font-size: 12px;
+}
+.shift-tone--morning {
+  --shift-color: #166534;
+  --shift-bg: #ecfdf5;
+  --shift-border: #86efac;
+}
+.shift-tone--afternoon {
+  --shift-color: #9a3412;
+  --shift-bg: #fff7ed;
+  --shift-border: #fdba74;
+}
+.shift-tone--flexible {
+  --shift-color: #0f766e;
+  --shift-bg: #f0fdfa;
+  --shift-border: #5eead4;
+}
+.shift-tone--night {
+  --shift-color: #1e3a8a;
+  --shift-bg: #eff6ff;
+  --shift-border: #93c5fd;
+}
+.shift-tone--off {
+  --shift-color: #475569;
+  --shift-bg: #f1f5f9;
+  --shift-border: #cbd5e1;
+}
+.shift-tone--administrative {
+  --shift-color: #0e7490;
+  --shift-bg: #ecfeff;
+  --shift-border: #67e8f9;
+}
+.shift-tone--leave {
+  --shift-color: #9f1239;
+  --shift-bg: #fff1f2;
+  --shift-border: #fda4af;
+}
+.shift-tone--unassigned {
+  --shift-color: #64748b;
+  --shift-bg: #f8fafc;
+  --shift-border: #cbd5e1;
+}
+.shift-module .assignment-chip,
+.shift-module .day-assignment,
+.shift-module .agenda-assignment {
+  color: var(--shift-color, #334155);
+  background: var(--shift-bg, #f8fafc);
+  border-color: var(--shift-border, #dbe3ee);
+}
+.shift-module .assignment-chip strong,
+.shift-module .shift-symbol {
+  color: var(--shift-color, #334155);
+}
+.shift-module .shift-symbol {
+  background: var(--shift-border, #e2e8f0);
+}
+.shift-module .agenda-assignment {
+  border-left: 3px solid var(--shift-color, #94a3b8);
 }
 .shift-module .form {
   padding: 24px;
@@ -1652,6 +2147,19 @@ async function decideSwap(approve: boolean) {
   .shift-module .filters {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .schedule-calendar-layout {
+    grid-template-columns: 1fr;
+  }
+  .schedule-filter-dialog .schedule-filter-fields {
+    grid-template-columns: 1fr;
+  }
+  .schedule-filter-dialog .schedule-filter-search {
+    grid-column: auto;
+  }
+  .department-filter-tree {
+    position: static;
+    max-height: min(320px, 45vh);
+  }
 }
 .month-calendar {
   overflow: hidden;
@@ -1754,6 +2262,13 @@ async function decideSwap(approve: boolean) {
   gap: 20px;
   color: #94a3b8;
   font-size: 13px;
+}
+.shift-module .assignment-chip,
+.shift-module .day-assignment,
+.shift-module .agenda-assignment {
+  color: var(--shift-color, #334155);
+  background: var(--shift-bg, #f8fafc);
+  border-color: var(--shift-border, #dbe3ee);
 }
 @media (max-width: 700px) {
   .month-heading {

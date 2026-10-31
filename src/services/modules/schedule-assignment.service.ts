@@ -1,14 +1,15 @@
-import { scheduleTime } from '@/utils/schedule-time';
+import { splitScheduleDateTime } from '@/utils/schedule-datetime';
+import { scheduleDate } from '@/utils/schedule-date';
 import { gql } from '@apollo/client/core';
 import { apolloClient } from '@/services/graphql/apollo';
 import type { Assignment, Shift } from '@/types/schedule';
 
 export const PHAN_CONG_CA = gql`
-  query PhanCongCa($tuNgay: DateTime!, $denNgay: DateTime!) {
+  query PhanCongCa($tuNgay: DateTime!, $denNgay: DateTime!, $maBoPhan: String) {
     phanCongCa(
       tuNgay: $tuNgay
       denNgay: $denNgay
-      maBoPhan: null
+      maBoPhan: $maBoPhan
       maNhanVien: null
       trangThai: null
     ) {
@@ -17,6 +18,10 @@ export const PHAN_CONG_CA = gql`
       data {
         id
         ngayLamViec
+        maNhanVienThaThe
+        gioCongChuan
+        heSoCa
+        isLocked
         maNhanVien
         hoTen
         maBoPhan
@@ -26,13 +31,13 @@ export const PHAN_CONG_CA = gql`
         maCa
         tenCa
         kyHieuCa
-        ngayBatDau
-        gioBatDau
-        ngayKetThuc
-        gioKetThuc
+        thoiGianBatDau
+        thoiGianKetThuc
         quaNgay
         trangThai
         nguonPhanCong
+        toanCa
+        maLoaiNghiPhep
         ghiChu
       }
     }
@@ -102,7 +107,7 @@ export async function getEmployeesMissingSchedule(
       ...row,
       danhSachNgayXepCa: (row.danhSachNgayXepCa || [])
         .filter((date): date is string => typeof date === 'string')
-        .map((date) => date.slice(0, 10))
+        .map(scheduleDate)
         .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date)),
     }));
 }
@@ -119,18 +124,20 @@ export interface ApiAssignment {
   maCa: string;
   tenCa: string;
   kyHieuCa: string | null;
-  ngayBatDau: string | null;
-  gioBatDau: string | null;
-  ngayKetThuc: string | null;
-  gioKetThuc: string | null;
+  thoiGianBatDau: string | null;
+  thoiGianKetThuc: string | null;
   quaNgay: boolean | null;
   trangThai: string | number | null;
   nguonPhanCong: string | null;
+  toanCa?: boolean | null;
+  maLoaiNghiPhep?: string | null;
+  isLocked?: boolean | null;
   ghiChu: string | null;
 }
 export async function getScheduleAssignments(
   from: string,
   to: string,
+  departmentCode: string | null = null,
 ): Promise<{
   assignments: Assignment[];
   shifts: Shift[];
@@ -139,7 +146,11 @@ export async function getScheduleAssignments(
     phanCongCa: { isResults: boolean; message?: string; data: (ApiAssignment | null)[] | null };
   }>({
     query: PHAN_CONG_CA,
-    variables: { tuNgay: `${from}T00:00:00+07:00`, denNgay: `${to}T23:59:59.999+07:00` },
+    variables: {
+      tuNgay: `${from}T00:00:00+07:00`,
+      denNgay: `${to}T23:59:59.999+07:00`,
+      maBoPhan: departmentCode,
+    },
     fetchPolicy: 'no-cache',
     errorPolicy: 'none',
   });
@@ -147,10 +158,17 @@ export async function getScheduleAssignments(
   if (!result?.isResults || !Array.isArray(result.data))
     throw new Error(result?.message || 'Không thể tải lịch phân công ca.');
   const rows = result.data.filter((row): row is ApiAssignment => !!row);
+  return mapScheduleAssignments(rows);
+}
+
+export function mapScheduleAssignments(rows: ApiAssignment[]): {
+  assignments: Assignment[];
+  shifts: Shift[];
+} {
   const shifts = new Map<string, Shift>();
   const assignments = rows.map((row): Assignment => {
-    const startTime = scheduleTime(row.gioBatDau);
-    const endTime = scheduleTime(row.gioKetThuc);
+    const { date: startDate, time: startTime } = splitScheduleDateTime(row.thoiGianBatDau);
+    const { date: endDate, time: endTime } = splitScheduleDateTime(row.thoiGianKetThuc);
     shifts.set(row.maCa, {
       id: row.maCa,
       code: row.kyHieuCa || row.maCa,
@@ -158,14 +176,17 @@ export async function getScheduleAssignments(
       scheduleType: 'ROTATING',
       startTime,
       endTime,
-      crossDay: !!row.quaNgay,
+      crossDay: startDate && endDate ? endDate > startDate : !!row.quaNgay,
       displayColor: '#2563eb',
       active: true,
     });
     return {
       id: String(row.id),
       employeeId: row.maNhanVien,
-      date: row.ngayLamViec.slice(0, 10),
+      employeeName: row.hoTen,
+      departmentCode: row.maBoPhan,
+      locked: row.isLocked === true,
+      date: scheduleDate(row.ngayLamViec),
       shiftId: row.maCa,
       shiftSymbol: row.kyHieuCa || row.maCa,
       shiftName: row.tenCa,
@@ -173,15 +194,52 @@ export async function getScheduleAssignments(
       status: 'SCHEDULED',
       note: row.ghiChu || '',
       revision: 1,
-      fullTime: true,
+      fullTime: row.toanCa !== false,
+      leaveTypeId: row.maLoaiNghiPhep?.trim() || null,
       startTime,
       endTime,
-      crossDay: !!row.quaNgay,
+      crossDay: startDate && endDate ? endDate > startDate : !!row.quaNgay,
       apiStatus: row.trangThai,
       assignmentSource: row.nguonPhanCong,
-      startDate: row.ngayBatDau?.slice(0, 10),
-      endDate: row.ngayKetThuc?.slice(0, 10),
+      startDate: startDate || scheduleDate(row.ngayLamViec),
+      endDate: endDate || undefined,
     };
   });
   return { assignments, shifts: [...shifts.values()] };
+}
+
+export interface CreateScheduleAssignmentInput {
+  maBoPhan: string;
+  maChucVu: string | null;
+  maNhanVien: string;
+  ngayLamViec: string;
+  maCa: string;
+  gioBatDau: string | null;
+  gioKetThuc: string | null;
+  ghiChu: string | null;
+}
+
+export async function createScheduleAssignment(input: CreateScheduleAssignmentInput) {
+  // Inline typed literals follow the existing assignment mutation services.
+  const fields = Object.entries(input)
+    .map(([key, value]) => key + ': ' + JSON.stringify(value))
+    .join(',');
+  const mutation = gql`mutation CreatePhanCongCa {
+    createPhanCongCa(input: { ${fields} }) {
+      isResults
+      message
+      data {
+        id ngayLamViec maNhanVien maNhanVienThaThe gioCongChuan heSoCa isLocked
+        hoTen maBoPhan tenBoPhan maChucVu tenChucVu maCa tenCa kyHieuCa
+        thoiGianBatDau thoiGianKetThuc quaNgay trangThai nguonPhanCong
+        toanCa maLoaiNghiPhep ghiChu
+      }
+    }
+  }`;
+  const { data } = await apolloClient.mutate<{
+    createPhanCongCa: { isResults: boolean; message?: string; data: ApiAssignment | null };
+  }>({ mutation, errorPolicy: 'none' });
+  const result = data?.createPhanCongCa;
+  if (!result?.isResults) throw new Error(result?.message || 'Không thể tạo phân công ca.');
+  return result;
 }

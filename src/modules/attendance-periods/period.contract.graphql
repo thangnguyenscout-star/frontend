@@ -1,0 +1,69 @@
+# Extracted from live localhost:7070 introspection, 2026-10-19. No credentials or data.
+schema {
+  query: RootQueries
+  mutation: RootMutations
+}
+
+type RootQueries {
+  danhSachKyChamCong(nam: Short, thang: UnsignedByte, trangThai: String): ActionResultsOfListOfKyChamCongDto!
+  thongTinKyChamCong(id: Long!): ActionResultsOfKyChamCongDto!
+}
+
+type RootMutations {
+  createKyChamCong(input: KyChamCongInput!): ActionResultsOfKyChamCongDto!
+  chotCong(id: Long!): ActionResultsOfKyChamCongDto!
+  khoaCong(id: Long!): ActionResultsOfKyChamCongDto!
+}
+
+input KyChamCongInput {
+  nam: Short!
+  thang: UnsignedByte!
+  tuNgay: DateTime!
+  denNgay: DateTime!
+  ghiChu: String
+}
+
+type ActionResultsOfKyChamCongDto {
+  isResults: Boolean!
+  message: String!
+  data: KyChamCongDto
+}
+
+"""The `UnsignedByte` scalar type represents an unsigned 8-bit integer."""
+scalar UnsignedByte
+
+type ActionResultsOfListOfKyChamCongDto {
+  isResults: Boolean!
+  message: String!
+  data: [KyChamCongDto]
+}
+
+"""The `Long` scalar type represents a signed 64-bit integer."""
+scalar Long
+
+"""The `Short` scalar type represents a signed 16-bit integer."""
+scalar Short
+
+"""
+The `DateTime` scalar type represents a date and time with time zone offset information.
+"""
+scalar DateTime
+
+type KyChamCongDto {
+  id: Long!
+  maKy: String!
+  nam: Short!
+  thang: UnsignedByte!
+  tuNgay: DateTime!
+  denNgay: DateTime!
+  trangThai: String!
+  ngayChot: DateTime
+  nguoiChot: String
+  ngayKhoa: DateTime
+  nguoiKhoa: String
+  ghiChu: String
+  createdAt: DateTime!
+  createdBy: String
+  updatedAt: DateTime
+  updatedBy: String
+}

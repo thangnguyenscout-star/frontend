@@ -1,6 +1,14 @@
 <script setup lang="ts">
+import { useToast } from '@/composables/useToast';
+const toast = useToast();
+import { getApiErrorMessage } from '@/utils/error-message';
 import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue';
 import Dialog from 'primevue/dialog';
+import Select from 'primevue/select';
+import InputText from 'primevue/inputtext';
+import Textarea from 'primevue/textarea';
+import AppButton from '@/components/common/AppButton.vue';
+import './schedule-dialog.css';
 import { systemToday, isPastScheduleDate } from '@/utils/schedule-date';
 import type { Shift, Assignment } from '@/types/schedule';
 export interface DayPlan {
@@ -17,10 +25,12 @@ const props = defineProps<{
   employees: { code: string; name: string; department: string }[];
   shifts: Shift[];
   existingAssignments?: Assignment[];
+  canEdit?: boolean;
   scheduledDates?: { employeeId: string; dates: string[] }[];
   shiftsLoading?: boolean;
   shiftsError?: string;
   modelValue: DayPlan[];
+  createAssignment?: (plan: DayPlan) => Promise<void>;
   initialDate: string;
   viewMode: 'week' | 'month';
   anchorDate: string;
@@ -30,11 +40,15 @@ const props = defineProps<{
   administrativeShiftId?: string;
 }>();
 const emit = defineEmits<{
+  edit: [Assignment];
   'request-shifts': [];
   'update:modelValue': [DayPlan[]];
   'update:viewMode': ['week' | 'month'];
   'update:anchorDate': [string];
 }>();
+const saving = ref(false);
+const confirmation = ref(false);
+const pending = ref<DayPlan>();
 const visible = ref(false),
   date = ref(''),
   shiftId = ref(''),
@@ -42,10 +56,14 @@ const visible = ref(false),
   note = ref(''),
   error = ref('');
 const startTime = ref('');
+const administrativeEndTime = ref('12:00');
 watch(
   () => props.disabled,
   (value) => {
-    if (value) visible.value = false;
+    if (value && !saving.value) {
+      visible.value = false;
+      confirmation.value = false;
+    }
   },
 );
 const selectedShift = computed(() => props.shifts.find((s) => s.id === shiftId.value));
@@ -53,12 +71,17 @@ const flexibleShift = computed(
   () => !props.administrative && !!selectedShift.value?.code.endsWith('XX'),
 );
 const endTime = computed(() => {
+  if (props.administrative && !fullTime.value) return administrativeEndTime.value;
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(startTime.value)) return '';
   const [hours, minutes] = startTime.value.split(':').map(Number);
-  return `${String((hours + 8) % 24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+  return `${String((hours + (fullTime.value ? 8 : 4)) % 24).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
 });
 const crossDay = computed(() => !!endTime.value && endTime.value <= startTime.value);
 watch([shiftId, selectedShift], () => {
+  if (props.administrative) {
+    startTime.value = '08:00';
+    return;
+  }
   startTime.value =
     plan(date.value)?.shiftId === shiftId.value
       ? plan(date.value)?.startTime || selectedShift.value?.startTime || ''
@@ -121,14 +144,27 @@ function alreadyScheduled(d: string, id: string) {
     props.existingAssignments?.some((item) => item.employeeId === id && item.date === d)
   );
 }
+function isSourceS(d: string, id: string) {
+  return (
+    props.existingAssignments?.find((item) => item.employeeId === id && item.date === d)
+      ?.assignmentSource === 'S'
+  );
+}
 function isAdministrativeSunday(d: string) {
   return props.administrative && new Date(`${d}T12:00:00`).getDay() === 0;
 }
 function open(d: string, id: string) {
+  if (saving.value || confirmation.value) return;
+  const existing = props.existingAssignments?.find(
+    (item) => item.employeeId === id && item.date === d,
+  );
+  if (existing && props.canEdit && !props.disabled && !isPastScheduleDate(d)) {
+    emit('edit', existing);
+    return;
+  }
+  if (props.administrative) return;
   if (
     props.disabled ||
-    props.shiftsLoading ||
-    props.shiftsError ||
     isAdministrativeSunday(d) ||
     isPastScheduleDate(d) ||
     alreadyScheduled(d, id)
@@ -138,15 +174,28 @@ function open(d: string, id: string) {
   const p = plan(d);
   date.value = d;
   shiftId.value = props.administrative ? props.administrativeShiftId || '' : p?.shiftId || '';
-  fullTime.value = props.administrative ? p?.shiftId !== 'OFF' : (p?.fullTime ?? true);
+  fullTime.value = props.createAssignment ? true : (p?.fullTime ?? true);
   note.value = p?.note || '';
   error.value = '';
-  startTime.value = p?.startTime || selectedShift.value?.startTime || '';
+  startTime.value = props.administrative
+    ? '08:00'
+    : p?.startTime || selectedShift.value?.startTime || '';
+  administrativeEndTime.value = p?.fullTime === false ? p.endTime || '12:00' : '12:00';
   visible.value = true;
   if (!props.administrative) emit('request-shifts');
 }
 function save() {
-  if (props.disabled) return;
+  if (props.disabled || saving.value) return;
+  if (
+    props.administrative &&
+    !fullTime.value &&
+    (!/^([01]\d|2[0-3]):[0-5]\d$/.test(administrativeEndTime.value) ||
+      administrativeEndTime.value <= '08:00' ||
+      administrativeEndTime.value > '16:00')
+  ) {
+    error.value = 'Giờ kết thúc phải sau 08:00 và không quá 16:00.';
+    return;
+  }
   if (isPastScheduleDate(date.value)) {
     error.value = 'Không được phân công ngày trong quá khứ.';
     return;
@@ -165,6 +214,29 @@ function save() {
     error.value = 'Vui lòng chọn ca đang hoạt động.';
     return;
   }
+  if (props.createAssignment) {
+    const shift = selectedShift.value;
+    if (!shift || !shift.active || shift.workType === '0') {
+      error.value = 'Vui lòng chọn ca làm việc đang hoạt động.';
+      return;
+    }
+    if (!fullTime.value) {
+      error.value = 'Vui lòng chọn toàn thời gian để tạo phân công ca.';
+      return;
+    }
+    pending.value = {
+      employeeId: employeeId.value,
+      date: date.value,
+      shiftId: shift.id,
+      fullTime: true,
+      note: note.value,
+      startTime: flexibleShift.value ? startTime.value : shift.startTime,
+      endTime: flexibleShift.value ? endTime.value : shift.endTime,
+      crossDay: flexibleShift.value ? crossDay.value : shift.crossDay,
+    };
+    confirmation.value = true;
+    return;
+  }
   emit(
     'update:modelValue',
     [
@@ -172,13 +244,12 @@ function save() {
       {
         employeeId: employeeId.value,
         date: date.value,
-        shiftId: props.administrative
-          ? fullTime.value
-            ? props.administrativeShiftId!
-            : 'OFF'
-          : shiftId.value,
+        shiftId: props.administrative ? props.administrativeShiftId! : shiftId.value,
         fullTime: shiftId.value === 'OFF' ? true : fullTime.value,
         note: props.administrative ? '' : note.value,
+        ...(props.administrative && !fullTime.value
+          ? { startTime: startTime.value, endTime: endTime.value, crossDay: crossDay.value }
+          : {}),
         ...(!props.administrative && shiftId.value !== 'OFF'
           ? {
               startTime: flexibleShift.value ? startTime.value : selectedShift.value?.startTime,
@@ -191,6 +262,40 @@ function save() {
   );
   visible.value = false;
 }
+async function confirmCreate() {
+  if (!confirmation.value) return;
+  if (
+    !confirmation.value ||
+    !pending.value ||
+    !props.createAssignment ||
+    saving.value ||
+    props.disabled
+  )
+    return;
+  if (
+    isPastScheduleDate(pending.value.date) ||
+    alreadyScheduled(pending.value.date, pending.value.employeeId)
+  ) {
+    confirmation.value = false;
+    error.value =
+      'Ngày phân công không còn hợp lệ hoặc nhân viên đã được phân ca. Vui lòng tải lại lịch.';
+    return;
+  }
+  saving.value = true;
+  error.value = '';
+  try {
+    await props.createAssignment({ ...pending.value });
+    confirmation.value = false;
+    visible.value = false;
+    pending.value = undefined;
+  } catch (e) {
+    toast.error(e);
+    confirmation.value = false;
+    error.value = getApiErrorMessage(e);
+  } finally {
+    saving.value = false;
+  }
+}
 function remove() {
   emit(
     'update:modelValue',
@@ -199,21 +304,47 @@ function remove() {
   visible.value = false;
 }
 function text(d: string, id = employeeId.value) {
-  if (isAdministrativeSunday(d) && !plan(d, id)) return 'Không xếp';
-  const p = plan(d, id);
-  if (!p) {
-    const assigned = props.existingAssignments?.find((a) => a.employeeId === id && a.date === d);
-    if (assigned)
-      return (
-        assigned.shiftSymbol ||
-        props.shifts.find((s) => s.id === assigned.shiftId)?.code ||
-        assigned.shiftId
-      );
-    if (alreadyScheduled(d, id)) return 'Đã xếp';
+  const assigned = props.existingAssignments?.find((a) => a.employeeId === id && a.date === d);
+  if (assigned) {
+    return (
+      assigned.shiftSymbol?.trim() ||
+      props.shifts.find((s) => s.id === assigned.shiftId)?.code ||
+      assigned.shiftId
+    );
   }
-  return p?.shiftId === 'OFF'
-    ? 'Nghỉ'
-    : props.shifts.find((s) => s.id === p?.shiftId)?.code || (p ? '⚠ Chọn lại ca' : '');
+  const p = plan(d, id);
+  if (p) {
+    return p.shiftId === 'OFF'
+      ? 'Nghỉ'
+      : props.shifts.find((s) => s.id === p.shiftId)?.code || p.shiftId;
+  }
+  if (alreadyScheduled(d, id)) {
+    return props.administrative
+      ? props.shifts.find((s) => s.id === props.administrativeShiftId)?.code ||
+          props.administrativeShiftId ||
+          'Đã xếp'
+      : 'Đã xếp';
+  }
+  if (isAdministrativeSunday(d)) return 'Không xếp';
+  return '';
+}
+function shiftTooltip(d: string, id: string) {
+  const assigned = props.existingAssignments?.find((a) => a.employeeId === id && a.date === d);
+  const selectedPlan = plan(d, id);
+  if (!assigned && !selectedPlan) return undefined;
+  const shift = props.shifts.find((s) => s.id === (assigned?.shiftId || selectedPlan?.shiftId));
+  const employeeName =
+    props.employees.find((e) => e.code === id)?.name || assigned?.employeeName || id;
+  const shiftName = assigned?.shiftName || shift?.name || text(d, id);
+  const start = assigned?.startTime || selectedPlan?.startTime || shift?.startTime;
+  const end = assigned?.endTime || selectedPlan?.endTime || shift?.endTime;
+  const overnight = assigned?.crossDay ?? selectedPlan?.crossDay ?? shift?.crossDay;
+  return [
+    `Họ tên: ${employeeName} (${id})`,
+    `Ngày làm việc: ${formatDate(d)}`,
+    `Ca làm việc: ${shiftName}`,
+    `Thời gian làm việc: ${start || '—'}–${end || '—'}${overnight ? ' (+1 ngày)' : ''}`,
+  ].join('\n');
 }
 </script>
 <template>
@@ -222,8 +353,12 @@ function text(d: string, id = employeeId.value) {
       <div>
         <h3>Lịch phân công theo nhân viên</h3>
         <p>
-          Bấm ô ngày của nhân viên để chọn ca. {{ employees.length }} nhân viên ·
-          {{ modelValue.length }} phân công đã chọn.
+          {{
+            administrative
+              ? 'Lịch hành chính được sắp xếp sẵn.'
+              : 'Bấm ô ngày của nhân viên để chọn ca.'
+          }}
+          {{ employees.length }} nhân viên · {{ modelValue.length }} phân công đã chọn.
         </p>
       </div>
       <div class="calendar-navigation">
@@ -305,12 +440,24 @@ function text(d: string, id = employeeId.value) {
             <td
               v-for="d in days"
               :key="d"
+              :title="shiftTooltip(d, e.code)"
               :class="{ weekend: [0, 6].includes(new Date(d + 'T12:00:00').getDay()) }"
             >
               <button
                 type="button"
-                :class="{ picked: !!plan(d, e.code), assigned: alreadyScheduled(d, e.code) }"
-                :disabled="disabled || d < currentDate || (!!fixedDate && d !== fixedDate) || isAdministrativeSunday(d) || alreadyScheduled(d, e.code)"
+                :class="{
+                  picked: !!plan(d, e.code),
+                  assigned: alreadyScheduled(d, e.code),
+                  'source-s': isSourceS(d, e.code),
+                }"
+                :disabled="
+                  (administrative && !(canEdit && alreadyScheduled(d, e.code))) ||
+                  disabled ||
+                  d < currentDate ||
+                  (!!fixedDate && d !== fixedDate) ||
+                  isAdministrativeSunday(d) ||
+                  (alreadyScheduled(d, e.code) && !canEdit)
+                "
                 :aria-label="e.name + ' · ' + d + ' · ' + text(d, e.code)"
                 @click="open(d, e.code)"
               >
@@ -330,65 +477,171 @@ function text(d: string, id = employeeId.value) {
       </table>
     </div>
     <Dialog
+      class="schedule-dialog"
       v-model:visible="visible"
       modal
-      :header="'Chọn ca · ' + date"
-      :style="{ width: '480px', maxWidth: '95vw' }"
-      ><div class="day-shift-dialog">
-        <p>
+      :closable="!saving"
+      :close-on-escape="!saving"
+      :header="createAssignment ? 'Tạo phân công ca' : 'Chọn ca'"
+      :style="{ width: '520px', maxWidth: '95vw' }"
+      ><fieldset class="day-shift-dialog" :disabled="saving || confirmation">
+        <p class="schedule-dialog-summary">
           <strong>{{ currentEmployee?.name }}</strong> · {{ currentEmployee?.code }}<br />{{
-            currentEmployee?.department
+            formatDate(date)
           }}
+          · {{ currentEmployee?.department }}
         </p>
         <template v-if="administrative">
-          <label class="full-time"><input v-model="fullTime" type="checkbox" />Làm giờ</label>
+          <label class="full-time"><input v-model="fullTime" type="checkbox" />Toàn ca</label>
+          <template v-if="!fullTime">
+            <label
+              >Giờ kết thúc<InputText
+                v-model="administrativeEndTime"
+                type="time"
+                min="08:01"
+                max="16:00"
+                required
+            /></label>
+          </template>
         </template>
         <template v-else>
           <label
-            >Ca làm việc *<select v-model="shiftId" :disabled="shiftsLoading || !!shiftsError">
-              <option value="">Chọn ca</option>
-              <option v-for="s in shifts" :key="s.id" :value="s.id">
-                {{ s.code }} · {{ s.name }} · {{ s.startTime }}–{{ s.endTime
-                }}{{ s.crossDay ? ' (+1 ngày)' : '' }}
-              </option>
-              <option value="OFF">Nghỉ</option>
-            </select></label
-          ><label v-if="shiftId && shiftId !== 'OFF'" class="full-time"
+            >Ca làm việc *<Select
+              v-model="shiftId"
+              :options="[
+                ...shifts.map((s) => ({
+                  value: s.id,
+                  label:
+                    s.code +
+                    ' · ' +
+                    s.name +
+                    (s.startTime && s.endTime ? ' · ' + s.startTime + '–' + s.endTime : '') +
+                    (s.crossDay ? ' (+1 ngày)' : ''),
+                })),
+                ...(!createAssignment ? [{ value: 'OFF', label: 'Nghỉ' }] : []),
+              ]"
+              option-label="label"
+              option-value="value"
+              placeholder="Chọn ca làm việc"
+              :disabled="saving || confirmation || shiftsLoading || !!shiftsError" /></label
+          ><label v-if="!createAssignment && shiftId && shiftId !== 'OFF'" class="full-time"
             ><input v-model="fullTime" type="checkbox" />Toàn thời gian</label
           >
           <p v-if="shiftId && shiftId !== 'OFF'">
-            {{ fullTime ? 'Làm cả ca đã chọn.' : 'Làm 1/2 ca đã chọn.' }} Khung giờ cụ thể của nửa
-            ca chưa được xác định.
+            {{ fullTime ? 'Làm cả ca đã chọn.' : 'Làm 1/2 ca đã chọn.' }}
+            <template v-if="!fullTime">Khung giờ cụ thể của nửa ca chưa được xác định.</template>
           </p>
           <p v-if="shiftsLoading">Đang tải danh sách ca...</p>
           <p v-if="shiftsError" role="alert">
-            {{ shiftsError }} <button type="button" @click="emit('request-shifts')">Thử lại</button>
+            {{ shiftsError }}
+            <AppButton
+              type="button"
+              label="Thử lại"
+              text
+              size="small"
+              @click="emit('request-shifts')"
+            />
           </p>
           <template v-if="flexibleShift">
-            <label>Giờ bắt đầu *<input v-model="startTime" type="time" required /></label>
-            <label>Giờ kết thúc<input :value="endTime" type="time" readonly /></label>
+            <label>Giờ bắt đầu *<InputText v-model="startTime" type="time" required /></label>
+            <label>Giờ kết thúc<InputText :model-value="endTime" type="time" readonly /></label>
             <p v-if="crossDay">Giờ kết thúc thuộc ngày hôm sau.</p>
           </template>
-          <label>Ghi chú<textarea v-model="note" rows="3" /></label>
+          <label
+            >Ghi chú<Textarea
+              v-model="note"
+              rows="3"
+              auto-resize
+              placeholder="Nhập ghi chú (nếu có)"
+          /></label>
         </template>
-        <p v-if="error" role="alert">{{ error }}</p>
-        <div class="calendar-navigation">
-          <button v-if="plan(date)" type="button" @click="remove">Bỏ ngày này</button
-          ><button type="button" @click="visible = false">Hủy</button
-          ><button
+        <p v-if="error" class="schedule-dialog-message error" role="alert">{{ error }}</p>
+        <div class="schedule-dialog-actions">
+          <AppButton
+            v-if="plan(date)"
             type="button"
-            class="primary"
+            label="Bỏ ngày này"
+            severity="danger"
+            text
+            @click="remove"
+          />
+          <AppButton
+            type="button"
+            label="Hủy"
+            severity="secondary"
+            outlined
+            @click="visible = false"
+          />
+          <AppButton
+            type="button"
+            :label="createAssignment ? 'Tạo ca' : 'Chọn ca'"
+            icon="pi pi-check"
             :disabled="!administrative && (shiftsLoading || !!shiftsError)"
             @click="save"
-          >
-            Chọn ca
-          </button>
-        </div>
-      </div></Dialog
+          />
+        </div></fieldset
+    ></Dialog>
+    <Dialog
+      class="schedule-dialog"
+      :visible="confirmation"
+      modal
+      header="Xác nhận tạo phân công ca"
+      :closable="!saving"
+      :close-on-escape="!saving"
+      :style="{ width: '520px', maxWidth: '95vw' }"
+      @update:visible="!saving && (confirmation = $event)"
     >
+      <div class="schedule-dialog-body">
+        <p class="schedule-dialog-summary">
+          Xác nhận tạo ca cho
+          <strong>{{ currentEmployee?.name }} ({{ pending?.employeeId }})</strong>.
+        </p>
+        <dl class="schedule-dialog-details">
+          <dt>Ngày làm việc</dt>
+          <dd>{{ pending?.date ? formatDate(pending.date) : '' }}</dd>
+          <dt>Bộ phận</dt>
+          <dd>{{ currentEmployee?.department || '—' }}</dd>
+          <dt>Ca làm việc</dt>
+          <dd>{{ selectedShift?.code }} · {{ selectedShift?.name }}</dd>
+          <dt>Giờ làm</dt>
+          <dd>
+            {{ pending?.startTime || 'Theo cấu hình ca' }} –
+            {{ pending?.endTime || 'Theo cấu hình ca' }}{{ pending?.crossDay ? ' (+1 ngày)' : '' }}
+          </dd>
+          <template v-if="pending?.note"
+            ><dt>Ghi chú</dt>
+            <dd>{{ pending.note }}</dd></template
+          >
+        </dl>
+      </div>
+      <template #footer>
+        <AppButton
+          type="button"
+          label="Quay lại"
+          severity="secondary"
+          outlined
+          :disabled="saving"
+          @click="confirmation = false"
+        />
+        <AppButton
+          type="button"
+          label="Xác nhận tạo ca"
+          icon="pi pi-check"
+          :loading="saving"
+          :disabled="saving"
+          @click="confirmCreate"
+        />
+      </template>
+    </Dialog>
   </section>
 </template>
 <style scoped>
+fieldset.day-shift-dialog {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
 .employee-calendar-wrap {
   overflow: auto;
   max-height: 65vh;
@@ -468,6 +721,11 @@ function text(d: string, id = employeeId.value) {
   background: #eff6ff;
   border-color: #2563eb;
   color: #2563eb;
+}
+.employee-calendar button.source-s {
+  background: #dcfce7;
+  border-color: #16a34a;
+  color: #166534;
 }
 @media (max-width: 600px) {
   .employee-calendar .employee-column {
@@ -575,14 +833,18 @@ function text(d: string, id = employeeId.value) {
   flex-direction: column;
   gap: 8px;
 }
-.day-shift-dialog select,
-.day-shift-dialog textarea,
-.day-shift-dialog input[type='time'] {
+.day-shift-dialog :deep(.p-select),
+.day-shift-dialog :deep(.p-textarea),
+.day-shift-dialog :deep(.p-inputtext) {
   width: 100%;
-  padding: 10px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  font: inherit;
+  min-width: 0;
+}
+.day-shift-dialog label {
+  font-size: 13px;
+}
+.day-shift-dialog p {
+  margin: 0;
+  line-height: 1.6;
 }
 .day-shift-dialog .full-time {
   flex-direction: row;
@@ -592,18 +854,7 @@ function text(d: string, id = employeeId.value) {
   font-size: 13px;
   color: #64748b;
 }
-.day-shift-dialog button {
-  padding: 9px 12px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  cursor: pointer;
-  background: white;
-}
-.day-shift-dialog .primary {
-  background: #2563eb;
-  color: white;
-  border-color: #2563eb;
-}
+
 @media (max-width: 600px) {
   .calendar-days {
     gap: 3px;
