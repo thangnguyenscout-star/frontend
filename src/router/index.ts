@@ -1,3 +1,4 @@
+import { statutoryRoutes, statutoryRouteGuard } from '@/modules/statutory/statutory.routes';
 import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.store';
 import { usePermissionStore } from '@/stores/permission.store';
@@ -158,6 +159,12 @@ export const router = createRouter({
           meta: { module: 'attendance' },
         },
         {
+          path: 'attendance/reconciliation',
+          alias: '/cham-cong/doi-soat-chot-cong',
+          component: () => import('@/modules/attendance-reconciliation/AttendanceReconciliationWorkspace.vue'),
+          meta: { module: 'attendance' },
+        },
+        {
           path: 'attendance/:id',
           component: () => import('@/views/attendance/AttendanceDetailView.vue'),
           meta: { module: 'attendance' },
@@ -218,26 +225,7 @@ export const router = createRouter({
           component: () => import('@/views/payroll/PayrollDetailView.vue'),
           meta: { module: 'payroll' },
         },
-        {
-          path: 'insurance',
-          component: () => import('@/views/insurance/InsuranceListView.vue'),
-          meta: { module: 'insurance' },
-        },
-        {
-          path: 'insurance/:id',
-          component: () => import('@/views/insurance/InsuranceDetailView.vue'),
-          meta: { module: 'insurance' },
-        },
-        {
-          path: 'pit',
-          component: () => import('@/views/pit/PitListView.vue'),
-          meta: { module: 'pit' },
-        },
-        {
-          path: 'pit/:id',
-          component: () => import('@/views/pit/PitDetailView.vue'),
-          meta: { module: 'pit' },
-        },
+        ...statutoryRoutes,
         {
           path: 'service-charge',
           component: () => import('@/views/service-charge/ServiceChargeListView.vue'),
@@ -268,6 +256,8 @@ router.beforeEach((to) => {
   const auth = useAuthStore();
   if (to.path !== '/login' && !auth.authenticated)
     return { path: '/login', query: { redirect: to.fullPath } };
-  if (to.meta.module && !usePermissionStore().can(String(to.meta.module))) return '/forbidden';
+  const permission = usePermissionStore();
+  if (to.meta.statutoryPermission) return statutoryRouteGuard(to, permission.can);
+  if (to.meta.module && !permission.can(String(to.meta.module))) return '/forbidden';
 });
 router.afterEach(() => window.dispatchEvent(new Event('hr-navigation')));

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
+import { statutorySidebarItems } from '@/modules/statutory/statutory-navigation';
 import { useRoute } from 'vue-router';
 import { attendanceNavigation } from '@/constants/attendance';
 const route = useRoute();
@@ -14,6 +15,7 @@ import { useAppStore } from '@/stores/app.store';
 const { t } = useI18n();
 const permission = usePermission(),
   app = useAppStore();
+const visibleItems = computed(() => statutorySidebarItems(modules, permission.can));
 const hidden = ref<string[]>([]);
 function toggle(group: string) {
   hidden.value = hidden.value.includes(group)
@@ -44,17 +46,14 @@ function toggle(group: string) {
       <RouterLink class="nav-link" to="/dashboard">
         <i class="pi pi-th-large" /><span>{{ t('dashboard') }}</span> </RouterLink
       ><template v-for="group in ['people', 'operations', 'finance']" :key="group">
-        <template v-if="modules.some((m) => m.group === group && permission.can(m.key))">
+        <template v-if="visibleItems.some((m) => m.group === group)">
           <button class="nav-group" @click="toggle(group)">
             <span>{{ t(group) }}</span
             ><i
               :class="['pi', hidden.includes(group) ? 'pi-angle-right' : 'pi-angle-down']"
             /></button
           ><template v-if="!hidden.includes(group)">
-            <template
-              v-for="item in modules.filter((m) => m.group === group && permission.can(m.key))"
-              :key="item.key"
-            >
+            <template v-for="item in visibleItems.filter((m) => m.group === group)" :key="item.key">
               <div v-if="item.key === 'attendance'" class="attendance-menu">
                 <button
                   class="nav-link attendance-toggle"
@@ -101,6 +100,10 @@ function toggle(group: string) {
                 v-else
                 :to="'/' + item.key"
                 class="nav-link"
+                :class="{
+                  'statutory-active':
+                    item.key === 'statutory' && route.path.startsWith('/statutory'),
+                }"
                 :title="t('modules.' + item.key)"
                 ><i :class="['pi', item.icon]" /><span>{{
                   t('modules.' + item.key)
@@ -122,6 +125,15 @@ function toggle(group: string) {
 </template>
 
 <style scoped>
+.nav-link.statutory-active {
+  background: #0067c00f;
+  color: var(--accent);
+}
+.nav-link.statutory-active span {
+  white-space: normal;
+  line-height: 1.5;
+}
+
 .attendance-toggle {
   width: 100%;
   border: 0;

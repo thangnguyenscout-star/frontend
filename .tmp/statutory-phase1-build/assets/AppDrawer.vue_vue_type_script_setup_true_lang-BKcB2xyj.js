@@ -1,0 +1,1 @@
+import{s as r}from"./index-CjSZG0uk.js";import{d as s,x as e,f as o,ak as t,al as p,s as n,o as c,R as f}from"./index-91B50aoj.js";const u=s({__name:"AppDrawer",setup(i){return(a,l)=>(c(),e(o(r),t(p(a.$attrs)),{default:n(()=>[f(a.$slots,"default")]),_:3},16))}});export{u as _};

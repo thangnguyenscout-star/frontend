@@ -14,6 +14,9 @@ const props = defineProps<{
   offset: number;
   sortKey: string;
   sortDirection: number;
+  sortable?: boolean;
+  totalLabel?: string;
+  recordCount?: number;
 }>();
 const emit = defineEmits<{ sort: [key: string]; open: [row: ReportRow] }>();
 const selected = ref<{ row: number; col: number } | null>(null);
@@ -105,7 +108,7 @@ function move(event: KeyboardEvent, row: number, col: number) {
         <caption class="report-sr-only">
           Báo cáo chấm công ·
           {{
-            allRows.length
+            recordCount ?? allRows.length
           }}
           bản ghi. Nhấn họ tên để xem chi tiết.
         </caption>
@@ -161,10 +164,12 @@ function move(event: KeyboardEvent, row: number, col: number) {
               <button
                 type="button"
                 :aria-label="'Sắp xếp theo ' + column.label"
+                :disabled="sortable === false"
                 @click="emit('sort', column.key)"
               >
                 {{ column.label
                 }}<i
+                  v-if="sortable !== false"
                   :class="[
                     'pi',
                     sortKey === column.key
@@ -258,7 +263,7 @@ function move(event: KeyboardEvent, row: number, col: number) {
             >
               {{
                 c === 0
-                  ? 'TỔNG CỘNG'
+                  ? totalLabel || 'TỔNG CỘNG'
                   : c === 1
                     ? allRows.length + ' bản ghi'
                     : column.total

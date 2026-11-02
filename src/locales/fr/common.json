@@ -130,7 +130,8 @@
     "insurance": "Assurances",
     "pit": "Impôt sur le revenu",
     "service-charge": "Frais de service",
-    "reports": "Rapports"
+    "reports": "Rapports",
+    "statutory": "Assurances sociales & Impôt sur le revenu"
   },
   "errors": {
     "400": "Requête incorrecte.",
@@ -188,5 +189,131 @@
   "COMMON_NOT_FOUND": "Données introuvables.",
   "COMMON_INTERNAL_ERROR": "Une erreur interne est survenue.",
   "COMMON_NETWORK_ERROR": "Impossible de se connecter au serveur.",
-  "COMMON_UNKNOWN_ERROR": "Une erreur inconnue est survenue."
+  "COMMON_UNKNOWN_ERROR": "Une erreur inconnue est survenue.",
+  "attendanceStatus": {
+    "label": "Statut",
+    "NORMAL": "Normal",
+    "IN_LATE": "Arrivée tardive",
+    "OUT_EARLY": "Départ anticipé",
+    "ABNORMAL": "Anomalie",
+    "ATTENDANCE_ABNORMAL": "Anomalie de présence",
+    "CHECK_YOUR_LOG_WORK": "Données de présence à vérifier",
+    "LEAVE_NORMAL": "Congé",
+    "LEAVE_VACATION": "Jour férié",
+    "WORK_IN_VACATION": "Travail un jour férié",
+    "HALF_WORK": "Demi-journée de travail",
+    "LEAVE_ABNORMAL": "Absence anormale",
+    "UNKNOWN": "Statut inconnu",
+    "EMPTY": "Non renseigné"
+  },
+  "statutory": {
+    "title": "Assurances sociales & Impôt sur le revenu",
+    "breadcrumb": "Fil d’Ariane des assurances et de l’impôt",
+    "eyebrow": "Gestion des obligations légales",
+    "description": "Un espace commun pour les assurances sociales et l’impôt sur le revenu. Sélectionnez un domaine pour trouver la fonction souhaitée.",
+    "workspace": "Assurances & Impôt",
+    "tabsLabel": "Domaines des assurances et de l’impôt",
+    "comingSoon": "À venir",
+    "preparing": "En préparation",
+    "open": "Ouvrir la fonction",
+    "functionCount": "{count} fonctions",
+    "phaseTitle": "Cet espace est en cours de préparation",
+    "phaseDescription": "Les fonctions sont organisées par domaine. Les éléments marqués À venir seront ouverts lorsqu’ils seront prêts à être utilisés.",
+    "sections": {
+      "insurance": {
+        "title": "Assurances sociales",
+        "subtitle": "Social · Santé · Chômage",
+        "description": "Gérer les paramètres d’affiliation, les dossiers et les obligations de cotisation."
+      },
+      "pit": {
+        "title": "Impôt sur le revenu",
+        "subtitle": "Inscription · Retenue · Régularisation",
+        "description": "Organiser les informations fiscales, les personnes à charge et les périodes de retenue et de régularisation."
+      }
+    },
+    "cards": {
+      "insuranceSettings": {
+        "title": "Paramètres des assurances",
+        "description": "Définir les informations d’affiliation et les paramètres par période d’effet.",
+        "topics": [
+          "Organisme affilié",
+          "Taux et paramètres de cotisation",
+          "Salaires régionaux, plafonds, planchers et assiettes",
+          "Établissement de soins initial"
+        ]
+      },
+      "insuranceMovements": {
+        "title": "Mouvements d’affiliation",
+        "description": "Suivre les changements d’affiliation et de cotisation des salariés.",
+        "topics": [
+          "Déclaration des entrées",
+          "Déclaration des sorties",
+          "Modification des informations et cotisations"
+        ]
+      },
+      "insuranceSubmissions": {
+        "title": "Dossiers & déclarations",
+        "description": "Centraliser les dossiers et suivre leur dépôt.",
+        "topics": [
+          "Liste et préparation des dossiers",
+          "Formulaires en vigueur",
+          "Signature numérique, fichiers et état du dépôt"
+        ]
+      },
+      "insuranceBenefits": {
+        "title": "Prestations sociales",
+        "description": "Gérer les demandes de prestations et leur traitement.",
+        "topics": [
+          "Maladie, maternité et récupération",
+          "Demandes de prestations",
+          "Suivi du traitement et des versements"
+        ]
+      },
+      "insurancePayments": {
+        "title": "Cotisations & rapprochement",
+        "description": "Suivre les obligations et rapprocher les données de cotisation.",
+        "topics": [
+          "Cotisations mensuelles",
+          "Demandes de paiement et ordres de virement",
+          "Importation et rapprochement C12"
+        ]
+      },
+      "pitSettings": {
+        "title": "Paramètres de l’impôt",
+        "description": "Gérer les paramètres fiscaux et les inscriptions par période d’effet.",
+        "topics": [
+          "Déductions familiales et barème",
+          "Revenus imposables et exonérés",
+          "Identification et inscription fiscales"
+        ]
+      },
+      "pitDependents": {
+        "title": "Personnes à charge",
+        "description": "Organiser les inscriptions et les périodes de déduction.",
+        "topics": [
+          "Liste et dossiers d’inscription",
+          "Suivi des approbations",
+          "Périodes de déduction"
+        ]
+      },
+      "pitWithholding": {
+        "title": "Retenues fiscales",
+        "description": "Suivre les revenus imposables et les retenues par période.",
+        "topics": [
+          "Revenus imposables",
+          "Retenues mensuelles et trimestrielles",
+          "Rapprochement avec la paie"
+        ]
+      },
+      "pitSettlement": {
+        "title": "Régularisation annuelle",
+        "description": "Organiser les dossiers annuels et les attestations.",
+        "topics": [
+          "Mandats et régularisation annuelle",
+          "Déclarations et annexes",
+          "Attestations électroniques de retenue"
+        ]
+      }
+    }
+  }
 }

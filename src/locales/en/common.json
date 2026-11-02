@@ -130,7 +130,8 @@
     "insurance": "Insurance",
     "pit": "Personal income tax",
     "service-charge": "Service charge",
-    "reports": "Reports"
+    "reports": "Reports",
+    "statutory": "Social Insurance & Personal Income Tax"
   },
   "errors": {
     "400": "Invalid request.",
@@ -188,5 +189,127 @@
   "COMMON_NOT_FOUND": "Data was not found.",
   "COMMON_INTERNAL_ERROR": "An internal error occurred.",
   "COMMON_NETWORK_ERROR": "Unable to connect to the server.",
-  "COMMON_UNKNOWN_ERROR": "An unknown error occurred."
+  "COMMON_UNKNOWN_ERROR": "An unknown error occurred.",
+  "attendanceStatus": {
+    "label": "Status",
+    "NORMAL": "Normal",
+    "IN_LATE": "Late arrival",
+    "OUT_EARLY": "Early departure",
+    "ABNORMAL": "Abnormal",
+    "ATTENDANCE_ABNORMAL": "Abnormal attendance",
+    "CHECK_YOUR_LOG_WORK": "Attendance records need review",
+    "LEAVE_NORMAL": "Leave",
+    "LEAVE_VACATION": "Public holiday",
+    "WORK_IN_VACATION": "Work on a public holiday",
+    "HALF_WORK": "Half working day",
+    "LEAVE_ABNORMAL": "Abnormal absence",
+    "UNKNOWN": "Unknown status",
+    "EMPTY": "Not specified"
+  },
+  "statutory": {
+    "title": "Social Insurance & Personal Income Tax",
+    "breadcrumb": "Social insurance and tax breadcrumb",
+    "eyebrow": "Statutory management",
+    "description": "A shared workspace for social insurance and personal income tax. Choose a business area to find the function you need.",
+    "workspace": "Insurance & Tax",
+    "tabsLabel": "Insurance and tax business areas",
+    "comingSoon": "Coming soon",
+    "preparing": "In preparation",
+    "open": "Open function",
+    "functionCount": "{count} functions",
+    "phaseTitle": "This workspace is being prepared",
+    "phaseDescription": "Functions are organized by business area. Items marked Coming soon will open when they are ready to use.",
+    "sections": {
+      "insurance": {
+        "title": "Social insurance",
+        "subtitle": "Social · Health · Unemployment",
+        "description": "Manage participation settings, insurance records and contribution obligations."
+      },
+      "pit": {
+        "title": "Personal income tax",
+        "subtitle": "Registration · Withholding · Settlement",
+        "description": "Organize tax information, dependents, withholding periods and annual settlements."
+      }
+    },
+    "cards": {
+      "insuranceSettings": {
+        "title": "Insurance settings",
+        "description": "Set participation details and parameters by effective period.",
+        "topics": [
+          "Participating organization",
+          "Contribution rates and parameters",
+          "Regional wages, caps, floors and contribution bases",
+          "Initial healthcare provider"
+        ]
+      },
+      "insuranceMovements": {
+        "title": "Insurance changes",
+        "description": "Track participation changes and employee contribution details.",
+        "topics": [
+          "Enroll employees",
+          "Report employee departures",
+          "Adjust details and contribution amounts"
+        ]
+      },
+      "insuranceSubmissions": {
+        "title": "Records & declarations",
+        "description": "Keep insurance records together and track submissions.",
+        "topics": [
+          "Record list and preparation",
+          "Current declaration forms",
+          "Digital signing, files and submission status"
+        ]
+      },
+      "insuranceBenefits": {
+        "title": "Insurance benefits",
+        "description": "Manage benefit claims and processing progress.",
+        "topics": [
+          "Sickness, maternity and recovery",
+          "Benefit applications",
+          "Processing and payment tracking"
+        ]
+      },
+      "insurancePayments": {
+        "title": "Contributions & reconciliation",
+        "description": "Track insurance obligations and reconcile contribution figures.",
+        "topics": [
+          "Monthly contributions",
+          "Payment requests and bank orders",
+          "C12 import and reconciliation"
+        ]
+      },
+      "pitSettings": {
+        "title": "Income tax settings",
+        "description": "Manage tax parameters and registration details by effective period.",
+        "topics": [
+          "Family deductions and tax brackets",
+          "Taxable and exempt income",
+          "Tax identification and registration"
+        ]
+      },
+      "pitDependents": {
+        "title": "Dependents",
+        "description": "Organize dependent registration and deduction periods.",
+        "topics": [
+          "Dependent list and registration files",
+          "Approval tracking",
+          "Deduction periods"
+        ]
+      },
+      "pitWithholding": {
+        "title": "Tax withholding",
+        "description": "Track taxable income and withholding obligations for each period.",
+        "topics": ["Taxable income", "Monthly and quarterly withholding", "Payroll reconciliation"]
+      },
+      "pitSettlement": {
+        "title": "Annual tax settlement",
+        "description": "Organize annual settlement records and certificates.",
+        "topics": [
+          "Authorization and annual settlement",
+          "Declarations and appendices",
+          "Electronic withholding certificates"
+        ]
+      }
+    }
+  }
 }

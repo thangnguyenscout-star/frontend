@@ -3,6 +3,8 @@ import { computed, reactive, ref, watch } from 'vue';
 import Dialog from 'primevue/dialog';
 import AppButton from '@/components/common/AppButton.vue';
 import ExcelReportSheet from './ExcelReportSheet.vue';
+import LateEarlyReport from './LateEarlyReport.vue';
+import ReportExportButtons from '@/components/common/ReportExportButtons.vue';
 import {
   buildReport,
   monthDays,
@@ -253,7 +255,7 @@ watch(pages, (value) => {
         <h1>Báo cáo chấm công</h1>
         <p>Theo dõi ngày công, kiểm soát biến động và đối soát dữ liệu tính lương.</p>
       </div>
-      <span class="reports-prototype"
+      <span v-if="active !== 'late'" class="reports-prototype"
         ><i class="pi pi-sparkles" /> Prototype · Dữ liệu minh họa</span
       >
     </header>
@@ -278,213 +280,221 @@ watch(pages, (value) => {
         ><span class="report-tab-number">0{{ i + 1 }}</span>
       </button>
     </div>
-    <form class="report-filters" @submit.prevent="apply">
-      <label
-        ><span>Kỳ báo cáo <b>*</b></span
-        ><input v-model="draft.period" type="month" min="2000-01" max="2100-12" required
-      /></label>
-      <label
-        ><span>Bộ phận</span
-        ><select v-model="draft.department">
-          <option value="">Tất cả bộ phận</option>
-          <option v-for="department in reportDepartments" :key="department">
-            {{ department }}
-          </option>
-        </select></label
-      >
-      <div class="report-filter-actions">
-        <AppButton type="submit" label="Xem báo cáo" icon="pi pi-filter" /><button
-          class="report-reset"
-          type="button"
-          title="Đặt lại bộ lọc"
-          @click="reset"
+    <LateEarlyReport v-if="active === 'late'" />
+    <template v-else>
+      <form class="report-filters" @submit.prevent="apply">
+        <label
+          ><span>Kỳ báo cáo <b>*</b></span
+          ><input v-model="draft.period" type="month" min="2000-01" max="2100-12" required
+        /></label>
+        <label
+          ><span>Bộ phận</span
+          ><select v-model="draft.department">
+            <option value="">Tất cả bộ phận</option>
+            <option v-for="department in reportDepartments" :key="department">
+              {{ department }}
+            </option>
+          </select></label
         >
-          <i class="pi pi-refresh" /><span>Đặt lại</span>
-        </button>
-      </div>
-      <div class="report-period-note">
-        <i class="pi pi-calendar" /><span
-          >Kỳ đang xem<strong>Tháng {{ periodLabel }}</strong></span
-        >
-      </div>
-    </form>
-    <p v-if="filterError" class="report-error" role="alert">{{ filterError }}</p>
-    <div class="report-metrics">
-      <article v-for="(metric, i) in metrics" :key="metric[0]" :class="'report-metric-' + i">
-        <div>
-          <span>{{ metric[0] }}</span
-          ><strong>{{ metric[1] }}</strong
-          ><small>{{ metric[3] }}</small>
-        </div>
-        <i :class="['pi', metric[2]]" />
-      </article>
-    </div>
-    <section
-      id="report-panel"
-      class="report-panel"
-      role="tabpanel"
-      :aria-labelledby="`report-tab-${active}`"
-    >
-      <div class="report-panel-heading">
-        <div>
-          <span class="report-sheet-label"><i class="pi pi-file-excel" /> BẢNG DỮ LIỆU</span>
-          <h2>
-            {{ activeTab.title }} <span>/ {{ periodLabel }}</span>
-          </h2>
-          <p>
-            {{ applied.department || 'Tất cả bộ phận' }}<span>·</span
-            >{{ new Set(filtered.map((r) => r.code)).size }} nhân viên<span>·</span
-            >{{ filtered.length }} bản ghi
-          </p>
-        </div>
-        <AppButton
-          label="Xuất CSV mẫu"
-          icon="pi pi-download"
-          severity="secondary"
-          outlined
-          :disabled="!filtered.length"
-          @click="download"
-        />
-      </div>
-      <div class="report-table-tools">
-        <label class="report-search"
-          ><i class="pi pi-search" /><input
-            v-model="search"
-            type="search"
-            placeholder="Tìm mã hoặc tên nhân viên…"
-            aria-label="Tìm nhân viên" /></label
-        ><select v-model="criterion" aria-label="Lọc trạng thái báo cáo">
-          <option value="">Tất cả trạng thái</option>
-          <option v-for="option in options" :key="option.value" :value="option.value">
-            {{ option.label }}
-          </option></select
-        ><span class="report-freeze-note"><i class="pi pi-lock" /> Cố định 2 cột nhân viên</span>
-      </div>
-      <p v-if="feedback" class="report-feedback" role="status">
-        <i class="pi pi-check-circle" /> {{ feedback }}
-      </p>
-      <ExcelReportSheet
-        :columns="report.columns"
-        :rows="visibleRows"
-        :all-rows="filtered"
-        :offset="offset"
-        :sort-key="sort.key"
-        :sort-direction="sort.direction"
-        @sort="sortBy"
-        @open="openDetail"
-      />
-      <div class="report-pagination">
-        <span
-          >Hiển thị
-          <strong
-            >{{ filtered.length ? offset + 1 : 0 }}–{{
-              Math.min(offset + pageSize, filtered.length)
-            }}</strong
+        <div class="report-filter-actions">
+          <AppButton type="submit" label="Xem báo cáo" icon="pi pi-filter" /><button
+            class="report-reset"
+            type="button"
+            title="Đặt lại bộ lọc"
+            @click="reset"
           >
-          / {{ filtered.length }} bản ghi</span
-        >
-        <div>
-          <label
-            >Số dòng
-            <select v-model.number="pageSize">
-              <option :value="10">10</option>
-              <option :value="20">20</option>
-              <option :value="50">50</option>
-              <option :value="100">100</option>
-            </select></label
-          ><button type="button" aria-label="Trang trước" :disabled="page === 1" @click="page--">
-            <i class="pi pi-chevron-left" /></button
-          ><span class="report-page-current">{{ page }}</span
-          ><span>/ {{ pages }}</span
-          ><button type="button" aria-label="Trang sau" :disabled="page >= pages" @click="page++">
-            <i class="pi pi-chevron-right" />
+            <i class="pi pi-refresh" /><span>Đặt lại</span>
           </button>
         </div>
-      </div>
-      <div class="report-sheet-footer">
-        <span><i class="pi pi-check-circle" /> {{ activeTab.subtitle }}</span
-        ><span>Σ Tổng cộng tính trên toàn bộ kết quả đã lọc</span>
-      </div>
-    </section>
-    <div v-if="active === 'monthly'" class="report-legend">
-      <strong>Ký hiệu công</strong
-      ><span
-        v-for="[symbol, label, tone] in [
-          ['X', 'Đủ công', 'work'],
-          ['M', 'Đi muộn', 'warn'],
-          ['S', 'Về sớm', 'warn'],
-          ['P', 'Phép năm', 'leave'],
-          ['OFF', 'Ngày nghỉ', 'off'],
-          ['V', 'Vắng không lương', 'danger'],
-          ['?', 'Thiếu / lỗi log', 'danger'],
-        ]"
-        :key="symbol"
-        ><b :class="'cell-' + tone">{{ symbol }}</b
-        >{{ label }}</span
-      >
-    </div>
-    <p v-if="active === 'overtime'" class="report-explanation">
-      <i class="pi pi-info-circle" /> OT đêm là phần nằm trong tổng OT; không cộng thêm lần nữa.
-    </p>
-    <p v-if="active === 'payroll'" class="report-explanation">
-      <i class="pi pi-info-circle" /> Mô phỏng: công hưởng lương = công thực tế + phép có lương.
-      Phép còn lại = đầu kỳ + phát sinh − đã dùng. Công chưa xác minh được tách riêng để đối soát.
-    </p>
-    <p class="report-demo-note">Dữ liệu mẫu phục vụ duyệt giao diện · Chưa kết nối API báo cáo.</p>
-    <Dialog
-      v-model:visible="detailOpen"
-      modal
-      header="Chi tiết chấm công"
-      :style="{ width: '780px', maxWidth: '95vw' }"
-    >
-      <div v-if="detail" class="report-detail">
-        <div class="report-detail-person">
-          <span>{{ detail.name.split(' ').at(-1)?.slice(0, 1) }}</span>
+        <div class="report-period-note">
+          <i class="pi pi-calendar" /><span
+            >Kỳ đang xem<strong>Tháng {{ periodLabel }}</strong></span
+          >
+        </div>
+      </form>
+      <p v-if="filterError" class="report-error" role="alert">{{ filterError }}</p>
+      <div class="report-metrics">
+        <article v-for="(metric, i) in metrics" :key="metric[0]" :class="'report-metric-' + i">
           <div>
-            <h3>{{ detail.name }}</h3>
-            <p>{{ detail.code }} · {{ detail.department }}</p>
+            <span>{{ metric[0] }}</span
+            ><strong>{{ metric[1] }}</strong
+            ><small>{{ metric[3] }}</small>
           </div>
-          <b>{{ periodLabel }}</b>
-        </div>
-        <dl class="report-detail-values">
-          <div v-for="field in detailFields" :key="field.key">
-            <dt>{{ field.label }}</dt>
-            <dd>{{ detail[field.key] }}</dd>
-          </div>
-        </dl>
-        <p class="report-detail-caption">
-          Dữ liệu quẹt thẻ minh họa · {{ detailRecords.length }} ngày
-        </p>
-        <div class="report-detail-scroll">
-          <table class="report-detail-table">
-            <thead>
-              <tr>
-                <th>Ngày</th>
-                <th>Ca</th>
-                <th>Giờ vào</th>
-                <th>Giờ ra</th>
-                <th>Ký hiệu</th>
-                <th>OT (giờ)</th>
-                <th>Ghi chú</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="day in detailRecords" :key="day.date">
-                <td>{{ day.date.split('-').reverse().join('/') }}</td>
-                <td>{{ day.shift }}</td>
-                <td>{{ day.checkIn }}</td>
-                <td>{{ day.checkOut }}</td>
-                <td>{{ day.symbol }}</td>
-                <td>{{ numberLabel(day.ot) }}</td>
-                <td>{{ day.anomaly || '—' }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          <i :class="['pi', metric[2]]" />
+        </article>
       </div>
-      <template #footer
-        ><AppButton label="Đóng" severity="secondary" outlined @click="detailOpen = false"
-      /></template>
-    </Dialog>
+      <section
+        id="report-panel"
+        class="report-panel"
+        role="tabpanel"
+        :aria-labelledby="`report-tab-${active}`"
+      >
+        <div class="report-panel-heading">
+          <div>
+            <span class="report-sheet-label"><i class="pi pi-file-excel" /> BẢNG DỮ LIỆU</span>
+            <h2>
+              {{ activeTab.title }} <span>/ {{ periodLabel }}</span>
+            </h2>
+            <p>
+              {{ applied.department || 'Tất cả bộ phận' }}<span>·</span
+              >{{ new Set(filtered.map((r) => r.code)).size }} nhân viên<span>·</span
+              >{{ filtered.length }} bản ghi
+            </p>
+          </div>
+          <div class="report-heading-exports">
+            <ReportExportButtons />
+            <AppButton
+              label="Xuất CSV mẫu"
+              icon="pi pi-download"
+              severity="secondary"
+              outlined
+              :disabled="!filtered.length"
+              @click="download"
+            />
+          </div>
+        </div>
+        <div class="report-table-tools">
+          <label class="report-search"
+            ><i class="pi pi-search" /><input
+              v-model="search"
+              type="search"
+              placeholder="Tìm mã hoặc tên nhân viên…"
+              aria-label="Tìm nhân viên" /></label
+          ><select v-model="criterion" aria-label="Lọc trạng thái báo cáo">
+            <option value="">Tất cả trạng thái</option>
+            <option v-for="option in options" :key="option.value" :value="option.value">
+              {{ option.label }}
+            </option></select
+          ><span class="report-freeze-note"><i class="pi pi-lock" /> Cố định 2 cột nhân viên</span>
+        </div>
+        <p v-if="feedback" class="report-feedback" role="status">
+          <i class="pi pi-check-circle" /> {{ feedback }}
+        </p>
+        <ExcelReportSheet
+          :columns="report.columns"
+          :rows="visibleRows"
+          :all-rows="filtered"
+          :offset="offset"
+          :sort-key="sort.key"
+          :sort-direction="sort.direction"
+          @sort="sortBy"
+          @open="openDetail"
+        />
+        <div class="report-pagination">
+          <span
+            >Hiển thị
+            <strong
+              >{{ filtered.length ? offset + 1 : 0 }}–{{
+                Math.min(offset + pageSize, filtered.length)
+              }}</strong
+            >
+            / {{ filtered.length }} bản ghi</span
+          >
+          <div>
+            <label
+              >Số dòng
+              <select v-model.number="pageSize">
+                <option :value="10">10</option>
+                <option :value="20">20</option>
+                <option :value="50">50</option>
+                <option :value="100">100</option>
+              </select></label
+            ><button type="button" aria-label="Trang trước" :disabled="page === 1" @click="page--">
+              <i class="pi pi-chevron-left" /></button
+            ><span class="report-page-current">{{ page }}</span
+            ><span>/ {{ pages }}</span
+            ><button type="button" aria-label="Trang sau" :disabled="page >= pages" @click="page++">
+              <i class="pi pi-chevron-right" />
+            </button>
+          </div>
+        </div>
+        <div class="report-sheet-footer">
+          <span><i class="pi pi-check-circle" /> {{ activeTab.subtitle }}</span
+          ><span>Σ Tổng cộng tính trên toàn bộ kết quả đã lọc</span>
+        </div>
+      </section>
+      <div v-if="active === 'monthly'" class="report-legend">
+        <strong>Ký hiệu công</strong
+        ><span
+          v-for="[symbol, label, tone] in [
+            ['X', 'Đủ công', 'work'],
+            ['M', 'Đi muộn', 'warn'],
+            ['S', 'Về sớm', 'warn'],
+            ['P', 'Phép năm', 'leave'],
+            ['OFF', 'Ngày nghỉ', 'off'],
+            ['V', 'Vắng không lương', 'danger'],
+            ['?', 'Thiếu / lỗi log', 'danger'],
+          ]"
+          :key="symbol"
+          ><b :class="'cell-' + tone">{{ symbol }}</b
+          >{{ label }}</span
+        >
+      </div>
+      <p v-if="active === 'overtime'" class="report-explanation">
+        <i class="pi pi-info-circle" /> OT đêm là phần nằm trong tổng OT; không cộng thêm lần nữa.
+      </p>
+      <p v-if="active === 'payroll'" class="report-explanation">
+        <i class="pi pi-info-circle" /> Mô phỏng: công hưởng lương = công thực tế + phép có lương.
+        Phép còn lại = đầu kỳ + phát sinh − đã dùng. Công chưa xác minh được tách riêng để đối soát.
+      </p>
+      <p class="report-demo-note">
+        Dữ liệu mẫu phục vụ duyệt giao diện · Chưa kết nối API báo cáo.
+      </p>
+      <Dialog
+        v-model:visible="detailOpen"
+        modal
+        header="Chi tiết chấm công"
+        :style="{ width: '780px', maxWidth: '95vw' }"
+      >
+        <div v-if="detail" class="report-detail">
+          <div class="report-detail-person">
+            <span>{{ detail.name.split(' ').at(-1)?.slice(0, 1) }}</span>
+            <div>
+              <h3>{{ detail.name }}</h3>
+              <p>{{ detail.code }} · {{ detail.department }}</p>
+            </div>
+            <b>{{ periodLabel }}</b>
+          </div>
+          <dl class="report-detail-values">
+            <div v-for="field in detailFields" :key="field.key">
+              <dt>{{ field.label }}</dt>
+              <dd>{{ detail[field.key] }}</dd>
+            </div>
+          </dl>
+          <p class="report-detail-caption">
+            Dữ liệu quẹt thẻ minh họa · {{ detailRecords.length }} ngày
+          </p>
+          <div class="report-detail-scroll">
+            <table class="report-detail-table">
+              <thead>
+                <tr>
+                  <th>Ngày</th>
+                  <th>Ca</th>
+                  <th>Giờ vào</th>
+                  <th>Giờ ra</th>
+                  <th>Ký hiệu</th>
+                  <th>OT (giờ)</th>
+                  <th>Ghi chú</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="day in detailRecords" :key="day.date">
+                  <td>{{ day.date.split('-').reverse().join('/') }}</td>
+                  <td>{{ day.shift }}</td>
+                  <td>{{ day.checkIn }}</td>
+                  <td>{{ day.checkOut }}</td>
+                  <td>{{ day.symbol }}</td>
+                  <td>{{ numberLabel(day.ot) }}</td>
+                  <td>{{ day.anomaly || '—' }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <template #footer
+          ><AppButton label="Đóng" severity="secondary" outlined @click="detailOpen = false"
+        /></template>
+      </Dialog>
+    </template>
   </section>
 </template>

@@ -1,4 +1,5 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
+vi.mock('./LateEarlyReport.vue', () => ({ default: { render: () => null } }));
 import { createRenderer, createSSRApp, nextTick, ssrContextKey, type App } from 'vue';
 import { renderToString } from '@vue/server-renderer';
 import PrimeVue from 'primevue/config';
@@ -57,6 +58,8 @@ it('renders all report destinations, spreadsheet headings and sample data', asyn
     'TỔNG CỘNG',
     'Nguyễn Minh Anh',
     'Xuất CSV mẫu',
+    'Xuất Excel',
+    'Xuất PDF',
     'Dữ liệu minh họa',
   ])
     expect(html).toContain(label);

@@ -130,7 +130,8 @@
     "insurance": "Bảo hiểm",
     "pit": "Thuế TNCN",
     "service-charge": "Phí phục vụ",
-    "reports": "Báo cáo"
+    "reports": "Báo cáo",
+    "statutory": "BHXH & Thuế TNCN"
   },
   "errors": {
     "400": "Yêu cầu không hợp lệ.",
@@ -188,5 +189,115 @@
   "COMMON_NOT_FOUND": "Không tìm thấy dữ liệu.",
   "COMMON_INTERNAL_ERROR": "Đã xảy ra lỗi hệ thống.",
   "COMMON_NETWORK_ERROR": "Không thể kết nối đến máy chủ.",
-  "COMMON_UNKNOWN_ERROR": "Đã xảy ra lỗi không xác định."
+  "COMMON_UNKNOWN_ERROR": "Đã xảy ra lỗi không xác định.",
+  "attendanceStatus": {
+    "label": "Tình trạng",
+    "NORMAL": "Bình thường",
+    "IN_LATE": "Đi trễ",
+    "OUT_EARLY": "Về sớm",
+    "ABNORMAL": "Bất thường",
+    "ATTENDANCE_ABNORMAL": "Chấm công bất thường",
+    "CHECK_YOUR_LOG_WORK": "Cần kiểm tra dữ liệu chấm công",
+    "LEAVE_NORMAL": "Nghỉ phép",
+    "LEAVE_VACATION": "Nghỉ lễ",
+    "WORK_IN_VACATION": "Làm việc ngày lễ",
+    "HALF_WORK": "Nửa ngày công",
+    "LEAVE_ABNORMAL": "Nghỉ bất thường",
+    "UNKNOWN": "Chưa xác định",
+    "EMPTY": "Chưa có thông tin"
+  },
+  "statutory": {
+    "title": "BHXH & Thuế TNCN",
+    "breadcrumb": "Đường dẫn BHXH và Thuế TNCN",
+    "eyebrow": "Quản lý pháp định",
+    "description": "Không gian tập trung cho bảo hiểm xã hội và thuế thu nhập cá nhân. Chọn nhóm nghiệp vụ để tìm chức năng bạn cần.",
+    "workspace": "Bảo hiểm & Thuế",
+    "tabsLabel": "Nhóm nghiệp vụ BHXH và thuế",
+    "comingSoon": "Sắp triển khai",
+    "preparing": "Đang chuẩn bị",
+    "open": "Mở chức năng",
+    "functionCount": "{count} chức năng",
+    "phaseTitle": "Không gian nghiệp vụ đang được hoàn thiện",
+    "phaseDescription": "Các chức năng được tổ chức theo từng nhóm nghiệp vụ. Những mục đánh dấu Sắp triển khai sẽ được mở khi sẵn sàng sử dụng.",
+    "sections": {
+      "insurance": {
+        "title": "Bảo hiểm xã hội",
+        "subtitle": "BHXH · BHYT · BHTN",
+        "description": "Cấu hình tham gia, quản lý hồ sơ và theo dõi nghĩa vụ đóng bảo hiểm."
+      },
+      "pit": {
+        "title": "Thuế TNCN",
+        "subtitle": "Đăng ký · Khấu trừ · Quyết toán",
+        "description": "Tổ chức thông tin thuế, người phụ thuộc và các kỳ khấu trừ, quyết toán."
+      }
+    },
+    "cards": {
+      "insuranceSettings": {
+        "title": "Cấu hình BHXH",
+        "description": "Thiết lập thông tin tham gia và các tham số theo thời gian hiệu lực.",
+        "topics": [
+          "Đơn vị tham gia bảo hiểm",
+          "Tỷ lệ trích nộp và tham số",
+          "Lương vùng, trần/sàn và căn cứ đóng",
+          "Nơi đăng ký KCB ban đầu"
+        ]
+      },
+      "insuranceMovements": {
+        "title": "Biến động BHXH",
+        "description": "Theo dõi thay đổi tham gia và thông tin đóng của nhân viên.",
+        "topics": ["Báo tăng lao động", "Báo giảm lao động", "Điều chỉnh thông tin và mức đóng"]
+      },
+      "insuranceSubmissions": {
+        "title": "Hồ sơ & kê khai",
+        "description": "Tập trung hồ sơ tham gia và theo dõi quá trình nộp.",
+        "topics": [
+          "Danh sách và lập hồ sơ",
+          "Biểu mẫu hiện hành",
+          "Ký số, xuất file và trạng thái nộp"
+        ]
+      },
+      "insuranceBenefits": {
+        "title": "Chế độ BHXH",
+        "description": "Quản lý đề nghị hưởng chế độ và tiến độ giải quyết.",
+        "topics": [
+          "Ốm đau, thai sản và dưỡng sức",
+          "Đề nghị hưởng chế độ",
+          "Theo dõi giải quyết và chi trả"
+        ]
+      },
+      "insurancePayments": {
+        "title": "Trích nộp & đối soát",
+        "description": "Theo dõi nghĩa vụ đóng và đối chiếu số liệu bảo hiểm.",
+        "topics": [
+          "Bảng trích nộp tháng",
+          "Đề nghị thanh toán và ủy nhiệm chi",
+          "Nhập và đối soát C12"
+        ]
+      },
+      "pitSettings": {
+        "title": "Cấu hình thuế TNCN",
+        "description": "Quản lý tham số thuế và thông tin đăng ký theo kỳ hiệu lực.",
+        "topics": [
+          "Giảm trừ gia cảnh và biểu thuế",
+          "Thu nhập chịu thuế và miễn thuế",
+          "Mã số thuế và định danh thuế"
+        ]
+      },
+      "pitDependents": {
+        "title": "Người phụ thuộc",
+        "description": "Tổ chức hồ sơ đăng ký và thời gian áp dụng giảm trừ.",
+        "topics": ["Danh sách và hồ sơ đăng ký", "Theo dõi phê duyệt", "Thời gian giảm trừ"]
+      },
+      "pitWithholding": {
+        "title": "Khấu trừ thuế",
+        "description": "Theo dõi thu nhập chịu thuế và nghĩa vụ khấu trừ trong kỳ.",
+        "topics": ["Thu nhập chịu thuế", "Bảng khấu trừ tháng và quý", "Đối chiếu bảng lương"]
+      },
+      "pitSettlement": {
+        "title": "Quyết toán thuế",
+        "description": "Tổng hợp hồ sơ quyết toán và chứng từ theo năm.",
+        "topics": ["Ủy quyền và quyết toán năm", "Tờ khai và phụ lục", "Chứng từ khấu trừ điện tử"]
+      }
+    }
+  }
 }
